@@ -1,17 +1,38 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Search, Phone, Mail, UserCircle2, FileCheck2
+  Search, Phone, Mail, UserCircle2, FileCheck2, Loader2
 } from "lucide-react";
 import { C, fmtMoney, monoFont, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, ProgressBar, Avatar, Table, Modal, Tag, CustomTooltip, riskTone, statusTone } from "../components/ui";
-import { CLASSES, SUBJECTS, STUDENTS, APPLICANTS } from "../data/mockData";
+import { CLASSES, SUBJECTS, STUDENTS as MOCK_STUDENTS, APPLICANTS } from "../data/mockData";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 function StudentsModule({ role, onSelectStudent }) {
   const [tab, setTab] = useState("directory");
   const [query, setQuery] = useState("");
   const [classFilter, setClassFilter] = useState("All");
+  const [students, setStudents] = useState(MOCK_STUDENTS);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
 
-  const filtered = STUDENTS.filter((s) =>
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase
+      .from("students")
+      .select("*")
+      .order("name")
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Falling back to demo student data:", error.message);
+        } else if (data && data.length > 0) {
+          setStudents(data);
+          setUsingLiveData(true);
+        }
+        setLoading(false);
+      });
+  }, []);
+
+  const filtered = students.filter((s) =>
     (classFilter === "All" || s.cls === classFilter) &&
     s.name.toLowerCase().includes(query.toLowerCase())
   );
@@ -20,9 +41,11 @@ function StudentsModule({ role, onSelectStudent }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, alignItems: "center", flexWrap: "wrap" }}>
         <Tag active={tab === "directory"} onClick={() => setTab("directory")}>Student Directory</Tag>
         <Tag active={tab === "admissions"} onClick={() => setTab("admissions")}>Admissions Pipeline</Tag>
+        {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+        {usingLiveData && <Pill tone="green">Live data</Pill>}
       </div>
 
       {tab === "directory" && (
