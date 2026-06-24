@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Sparkles, Menu, Bell, ChevronDown, LogOut,
   LayoutDashboard, Users, GraduationCap, CalendarCheck, FileText, Wallet,
@@ -9,6 +9,7 @@ import {
 
 import { C, FONT_IMPORT, displayFont, bodyFont, ROLE_META } from "./lib/theme";
 import { NexusMark } from "./components/ui";
+import { isSupabaseConfigured, getCurrentProfile, signOut } from "./lib/supabaseClient";
 
 import { LoginScreen } from "./auth/LoginScreen";
 import { DashboardModule } from "./modules/DashboardModule";
@@ -87,6 +88,18 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(isSupabaseConfigured);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    getCurrentProfile().then((profile) => {
+      if (profile) {
+        setUser(profile);
+        setRole(profile.role);
+      }
+      setCheckingSession(false);
+    });
+  }, []);
 
   function handleLogin(profile) {
     setUser(profile);
@@ -94,9 +107,14 @@ export default function App() {
     setActiveModule("dashboard");
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    if (isSupabaseConfigured) await signOut();
     setUser(null);
     setRoleMenuOpen(false);
+  }
+
+  if (checkingSession) {
+    return <div style={{ minHeight: "100vh", background: C.bgGrad }} />;
   }
 
   if (!user) return <LoginScreen onLogin={handleLogin} />;

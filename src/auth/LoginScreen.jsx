@@ -4,20 +4,7 @@ import {
 } from "lucide-react";
 import { C, FONT_IMPORT, displayFont, bodyFont, ROLE_META } from "../lib/theme";
 import { NexusMark, Card, Pill } from "../components/ui";
-
-/*
-  WIRING TO SUPABASE (once your project is live):
-  import { supabase } from "./lib/supabaseClient";
-  async function signIn(email, password) {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single();
-    return profile; // { full_name, role, ... }
-  }
-  Swap the DEMO_MODE block inside LoginScreen's handleLogin() for the call above,
-  then remove the quick-role demo buttons.
-*/
-const DEMO_MODE = true;
+import { isSupabaseConfigured, signInWithEmail } from "../lib/supabaseClient";
 
 function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -30,12 +17,21 @@ function LoginScreen({ onLogin }) {
     setError("");
     if (!email || !password) { setError("Please enter both email and password."); return; }
     setLoading(true);
-    if (DEMO_MODE) {
+
+    if (isSupabaseConfigured) {
+      try {
+        const profile = await signInWithEmail(email, password);
+        setLoading(false);
+        onLogin(profile);
+      } catch (err) {
+        setLoading(false);
+        setError(err.message === "Invalid login credentials" ? "Incorrect email or password." : err.message);
+      }
+    } else {
+      // Demo mode: no Supabase project configured yet (see .env)
       await new Promise((r) => setTimeout(r, 600));
       setLoading(false);
       onLogin({ role: "admin", full_name: "Mrs. Patience Mhike", email });
-    } else {
-      setLoading(false);
     }
   }
 
@@ -50,7 +46,7 @@ function LoginScreen({ onLogin }) {
         <Card>
           <h1 style={{ ...displayFont, fontSize: 18, fontWeight: 700, color: C.text, margin: "0 0 4px" }}>Welcome back</h1>
           <p style={{ fontSize: 13, color: C.textMuted, margin: "0 0 20px" }}>Sign in to Springfield International High School</p>
-          {DEMO_MODE && <div style={{ marginBottom: 16 }}><Pill tone="amber">Demo Mode — connect Supabase to enable real sign-in</Pill></div>}
+          {!isSupabaseConfigured && <div style={{ marginBottom: 16 }}><Pill tone="amber">Demo Mode — connect Supabase to enable real sign-in</Pill></div>}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 11, padding: "11px 13px" }}>
               <Mail size={15} color={C.textFaint} />
@@ -58,7 +54,7 @@ function LoginScreen({ onLogin }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 11, padding: "11px 13px" }}>
               <Lock size={15} color={C.textFaint} />
-              <input type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" style={{ flex: 1, background: "none", border: "none", outline: "none", color: C.text, fontSize: 13.5 }} />
+              <input type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" style={{ flex: 1, background: "none", border: "none", outline: "none", color: C.text, fontSize: 13.5 }} onKeyDown={(e) => { if (e.key === "Enter") handleLogin(); }} />
               <button onClick={() => setShowPw((s) => !s)} style={{ background: "none", border: "none", color: C.textFaint, cursor: "pointer", display: "flex" }}>
                 {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
@@ -70,7 +66,7 @@ function LoginScreen({ onLogin }) {
             <button style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12.5, cursor: "pointer", textAlign: "center" }}>Forgot password?</button>
           </div>
         </Card>
-        {DEMO_MODE && (
+        {!isSupabaseConfigured && (
           <div style={{ marginTop: 18 }}>
             <div style={{ textAlign: "center", fontSize: 11.5, color: C.textFaint, marginBottom: 10 }}>Quick preview as any role</div>
             <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
@@ -90,4 +86,4 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-export { LoginScreen, DEMO_MODE };
+export { LoginScreen };
