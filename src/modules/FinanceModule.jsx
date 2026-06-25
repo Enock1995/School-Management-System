@@ -1,19 +1,49 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Wallet, AlertTriangle, CreditCard, DollarSign
+  Wallet, AlertTriangle, CreditCard, DollarSign, Loader2
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell
 } from "recharts";
 import { C, fmtMoney, monoFont, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, ProgressBar, Avatar, Table, Modal, Tag, CustomTooltip, riskTone, statusTone } from "../components/ui";
-import { CLASSES, SUBJECTS, STUDENTS, APPLICANTS, STAFF, ENROLLMENT_TREND, REVENUE_TREND, CLASS_PERFORMANCE, FEE_STATUS, AI_ALERTS, EXAMS, RESULTS_F4A_MATH, INVOICES, PAYMENT_METHODS, ANNOUNCEMENTS, BOOKS, LOANS, ROUTES, TIMETABLE_F4A } from "../data/mockData";
+import { CLASSES, SUBJECTS, STUDENTS, APPLICANTS, STAFF, ENROLLMENT_TREND, REVENUE_TREND, CLASS_PERFORMANCE, FEE_STATUS, AI_ALERTS, EXAMS, RESULTS_F4A_MATH, INVOICES as MOCK_INVOICES, PAYMENT_METHODS, ANNOUNCEMENTS, BOOKS, LOANS, ROUTES, TIMETABLE_F4A } from "../data/mockData";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 function FinanceModule({ role }) {
+  const [invoices, setInvoices] = useState(MOCK_INVOICES);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase
+      .from("invoices")
+      .select("*")
+      .order("id")
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Falling back to demo invoice data:", error.message);
+        } else if (data && data.length > 0) {
+          setInvoices(data);
+          setUsingLiveData(true);
+        }
+        setLoading(false);
+      });
+  }, []);
+
+  const liveIndicator = (loading || usingLiveData) && (
+    <div style={{ marginBottom: 16 }}>
+      {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+      {usingLiveData && <Pill tone="green">Live data</Pill>}
+    </div>
+  );
+
   if (role === "parent") {
-    const inv = INVOICES[0];
+    const inv = invoices.find((i) => i.student === "Tadiwa Mhofu") || invoices[0];
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        {liveIndicator}
         <Card>
           <SectionHeader title="Term 2 Fee Statement — Tadiwa Mhofu" />
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
@@ -45,6 +75,7 @@ function FinanceModule({ role }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {liveIndicator}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <StatCard icon={Wallet} label="Collected This Term" value={fmtMoney(248600)} delta="+13.9% vs target" tone="green" />
         <StatCard icon={AlertTriangle} label="Outstanding" value={fmtMoney(72400)} deltaTone="red" delta="44 overdue accounts" tone="red" />
@@ -96,7 +127,7 @@ function FinanceModule({ role }) {
             { key: "due", label: "Due Date" },
             { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> },
           ]}
-          rows={INVOICES}
+          rows={invoices}
         />
       </Card>
       <Card>
@@ -114,6 +145,5 @@ function FinanceModule({ role }) {
     </div>
   );
 }
-
 
 export { FinanceModule };

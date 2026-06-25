@@ -1,16 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Users, Wallet, Bus, Search, Plus, Clock, ShieldCheck, Phone, Mail, DollarSign, Briefcase, UserPlus, Check, XCircle, CalendarDays, Download
+  Users, Wallet, Bus, Search, Plus, Clock, ShieldCheck, Phone, Mail, DollarSign, Briefcase, UserPlus, Check, XCircle, CalendarDays, Download, Loader2
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip
 } from "recharts";
 import { C, fmtMoney, monoFont, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, ProgressBar, Avatar, Table, Modal, Tag, CustomTooltip, riskTone, statusTone } from "../components/ui";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 const HR_DEPARTMENTS = ["Mathematics", "Sciences", "Languages", "Humanities", "Administration", "Finance", "Support Staff"];
 
-const HR_STAFF = [
+const MOCK_HR_STAFF = [
   { id: "EMP-001", name: "Mrs. Patience Mhike", role: "Head of School", department: "Administration", type: "Full-time", joined: "2018-01-15", salary: 2400, status: "Active", phone: "+263 77 100 2001", email: "p.mhike@springfield.edu" },
   { id: "EMP-002", name: "Mr. T. Moyo", role: "Mathematics Teacher", department: "Mathematics", type: "Full-time", joined: "2019-08-20", salary: 980, status: "Active", phone: "+263 77 412 0091", email: "t.moyo@springfield.edu" },
   { id: "EMP-003", name: "Mrs. R. Chikore", role: "English Teacher", department: "Languages", type: "Full-time", joined: "2020-01-10", salary: 920, status: "Active", phone: "+263 78 220 4471", email: "r.chikore@springfield.edu" },
@@ -29,17 +30,26 @@ const HR_LEAVE_REQUESTS_INIT = [
   { id: 4, name: "Mr. D. Banda", type: "Annual Leave", from: "2026-08-10", to: "2026-08-14", days: 4, status: "Declined", reason: "Overlaps exam marking period" },
 ];
 
-const HR_LEAVE_BALANCES = HR_STAFF.slice(0, 6).map((s, i) => ({ name: s.name, annualTotal: 21, annualUsed: [4, 9, 12, 21, 6, 15][i], sickTotal: 14, sickUsed: [0, 2, 9, 1, 3, 0][i] }));
+function computePayroll(staffList) {
+  return staffList.map((s) => {
+    const basic = Number(s.salary) || 0;
+    const allowances = Math.round(basic * 0.12);
+    const gross = basic + allowances;
+    const paye = Math.round(gross * 0.18);
+    const pension = Math.round(basic * 0.05);
+    const net = gross - paye - pension;
+    return { ...s, basic, allowances, gross, paye, pension, net };
+  });
+}
 
-const HR_PAYROLL = HR_STAFF.map((s) => {
-  const basic = s.salary;
-  const allowances = Math.round(basic * 0.12);
-  const gross = basic + allowances;
-  const paye = Math.round(gross * 0.18);
-  const pension = Math.round(basic * 0.05);
-  const net = gross - paye - pension;
-  return { ...s, basic, allowances, gross, paye, pension, net };
-});
+function computeLeaveBalances(staffList) {
+  return staffList.slice(0, 6).map((s, i) => ({
+    name: s.name, annualTotal: 21,
+    annualUsed: [4, 9, 12, 21, 6, 15][i] ?? 5,
+    sickTotal: 14,
+    sickUsed: [0, 2, 9, 1, 3, 0][i] ?? 1,
+  }));
+}
 
 const HR_PAYROLL_TREND = [
   { month: "Jan", cost: 9120 }, { month: "Feb", cost: 9120 }, { month: "Mar", cost: 9340 },
@@ -60,11 +70,11 @@ const HR_APPLICANTS = [
   { name: "Anita Ndoro", position: "Sports Coordinator", stage: "Hired", date: "2026-05-20" },
 ];
 
-function StaffModal({ staff, onClose }) {
+function StaffModal({ staff, payroll, leaveBalances, onClose }) {
   const [tab, setTab] = useState("contract");
   if (!staff) return null;
-  const balance = HR_LEAVE_BALANCES.find((b) => b.name === staff.name);
-  const pay = HR_PAYROLL.find((p) => p.id === staff.id);
+  const balance = leaveBalances.find((b) => b.name === staff.name);
+  const pay = payroll.find((p) => p.id === staff.id);
   return (
     <Modal open={!!staff} onClose={onClose} title={staff.name} wide>
       <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 18 }}>
@@ -82,7 +92,7 @@ function StaffModal({ staff, onClose }) {
       </div>
       {tab === "contract" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          {[["Employee ID", staff.id], ["Employment Type", staff.type], ["Department", staff.department], ["Date Joined", staff.joined], ["Contract End", staff.contractEnd || "Permanent"], ["Monthly Basic", fmtMoney(staff.salary)]].map(([k, v]) => (
+          {[["Employee ID", staff.id], ["Employment Type", staff.type], ["Department", staff.department], ["Date Joined", staff.joined], ["Contract End", staff.contractEnd || staff.contract_end || "Permanent"], ["Monthly Basic", fmtMoney(staff.salary)]].map(([k, v]) => (
             <div key={k}>
               <div style={{ fontSize: 11, color: C.textFaint, textTransform: "uppercase" }}>{k}</div>
               <div style={{ fontSize: 14, color: C.text, fontWeight: 600, marginTop: 3 }}>{v}</div>
@@ -130,7 +140,7 @@ function StaffModal({ staff, onClose }) {
   );
 }
 
-function HRAdminView() {
+function HRAdminView({ staff, payroll, leaveBalances, loading, usingLiveData }) {
   const [tab, setTab] = useState("staff");
   const [query, setQuery] = useState("");
   const [deptFilter, setDeptFilter] = useState("All");
@@ -139,9 +149,9 @@ function HRAdminView() {
   const [payslipPreview, setPayslipPreview] = useState(null);
   const [payrollRun, setPayrollRun] = useState(false);
 
-  const filteredStaff = HR_STAFF.filter((s) => (deptFilter === "All" || s.department === deptFilter) && s.name.toLowerCase().includes(query.toLowerCase()));
-  const totalGross = HR_PAYROLL.reduce((sum, p) => sum + p.gross, 0);
-  const totalNet = HR_PAYROLL.reduce((sum, p) => sum + p.net, 0);
+  const filteredStaff = staff.filter((s) => (deptFilter === "All" || s.department === deptFilter) && s.name.toLowerCase().includes(query.toLowerCase()));
+  const totalGross = payroll.reduce((sum, p) => sum + p.gross, 0);
+  const totalNet = payroll.reduce((sum, p) => sum + p.net, 0);
   const pendingLeave = leave.filter((l) => l.status === "Pending").length;
 
   function decideLeave(id, decision) {
@@ -152,8 +162,14 @@ function HRAdminView() {
 
   return (
     <div>
+      {(loading || usingLiveData) && (
+        <div style={{ marginBottom: 16 }}>
+          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+          {usingLiveData && <Pill tone="green">Live data</Pill>}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
-        <StatCard icon={Users} label="Total Staff" value={HR_STAFF.length} tone="indigo" />
+        <StatCard icon={Users} label="Total Staff" value={staff.length} tone="indigo" />
         <StatCard icon={Wallet} label="Monthly Payroll Cost" value={fmtMoney(totalGross)} tone="green" />
         <StatCard icon={Clock} label="Pending Leave Requests" value={pendingLeave} tone="amber" />
         <StatCard icon={Briefcase} label="Open Positions" value={HR_POSITIONS.filter((p) => p.status === "Open").length} tone="cyan" />
@@ -226,7 +242,7 @@ function HRAdminView() {
                 { key: "annual", label: "Annual Leave", render: (r) => `${r.annualUsed}/${r.annualTotal} days` },
                 { key: "sick", label: "Sick Leave", render: (r) => `${r.sickUsed}/${r.sickTotal} days` },
               ]}
-              rows={HR_LEAVE_BALANCES}
+              rows={leaveBalances}
             />
           </Card>
         </div>
@@ -271,7 +287,7 @@ function HRAdminView() {
                 { key: "pension", label: "Pension", render: (r) => fmtMoney(r.pension) },
                 { key: "net", label: "Net Pay", render: (r) => <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(r.net)}</span> },
               ]}
-              rows={HR_PAYROLL}
+              rows={payroll}
             />
           </Card>
         </div>
@@ -317,7 +333,7 @@ function HRAdminView() {
         </div>
       )}
 
-      <StaffModal staff={selectedStaff} onClose={() => setSelectedStaff(null)} />
+      <StaffModal staff={selectedStaff} payroll={payroll} leaveBalances={leaveBalances} onClose={() => setSelectedStaff(null)} />
 
       <Modal open={!!payslipPreview} onClose={() => setPayslipPreview(null)} title="Payslip Preview">
         {payslipPreview && (
@@ -349,10 +365,10 @@ function HRAdminView() {
   );
 }
 
-function HRSelfServiceView() {
+function HRSelfServiceView({ payroll, leaveBalances }) {
   const [tab, setTab] = useState("payslips");
-  const me = HR_PAYROLL[1]; // Mr. T. Moyo, demo "logged in" staff
-  const myBalance = HR_LEAVE_BALANCES.find((b) => b.name === me.name);
+  const me = payroll[1]; // Mr. T. Moyo, demo "logged in" staff
+  const myBalance = leaveBalances.find((b) => b.name === me.name);
   const myLeave = HR_LEAVE_REQUESTS_INIT.filter((l) => l.name === me.name);
   const [requestOpen, setRequestOpen] = useState(false);
 
@@ -438,7 +454,33 @@ function HRSelfServiceView() {
 }
 
 function HRPayrollModule({ role }) {
-  return role === "admin" ? <HRAdminView /> : <HRSelfServiceView />;
+  const [staff, setStaff] = useState(MOCK_HR_STAFF);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase
+      .from("staff")
+      .select("*")
+      .order("id")
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Falling back to demo staff data:", error.message);
+        } else if (data && data.length > 0) {
+          setStaff(data);
+          setUsingLiveData(true);
+        }
+        setLoading(false);
+      });
+  }, []);
+
+  const payroll = computePayroll(staff);
+  const leaveBalances = computeLeaveBalances(staff);
+
+  return role === "admin"
+    ? <HRAdminView staff={staff} payroll={payroll} leaveBalances={leaveBalances} loading={loading} usingLiveData={usingLiveData} />
+    : <HRSelfServiceView payroll={payroll} leaveBalances={leaveBalances} />;
 }
 
 

@@ -1,16 +1,39 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Send, Loader2, Wand2
 } from "lucide-react";
 import { C, fmtMoney, monoFont, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, ProgressBar, Avatar, Table, Modal, Tag, CustomTooltip, riskTone, statusTone } from "../components/ui";
-import { CLASSES, SUBJECTS, STUDENTS, APPLICANTS, STAFF, ENROLLMENT_TREND, REVENUE_TREND, CLASS_PERFORMANCE, FEE_STATUS, AI_ALERTS, EXAMS, RESULTS_F4A_MATH, INVOICES, PAYMENT_METHODS, ANNOUNCEMENTS, BOOKS, LOANS, ROUTES, TIMETABLE_F4A } from "../data/mockData";
+import { ANNOUNCEMENTS as MOCK_ANNOUNCEMENTS } from "../data/mockData";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 function CommunicationModule({ role }) {
   const [draft, setDraft] = useState("");
+  const [title, setTitle] = useState("");
   const [drafting, setDrafting] = useState(false);
+  const [sending, setSending] = useState(false);
   const [audience, setAudience] = useState("All Parents");
+  const [announcements, setAnnouncements] = useState(MOCK_ANNOUNCEMENTS);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
   const canCompose = role === "admin" || role === "teacher";
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase
+      .from("announcements")
+      .select("*")
+      .order("date", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Falling back to demo announcement data:", error.message);
+        } else if (data && data.length > 0) {
+          setAnnouncements(data);
+          setUsingLiveData(true);
+        }
+        setLoading(false);
+      });
+  }, []);
 
   async function aiDraft() {
     setDrafting(true);
@@ -34,8 +57,38 @@ function CommunicationModule({ role }) {
     }
   }
 
+  function sendAnnouncement() {
+    if (!title.trim() || !draft.trim() || sending) return;
+    const newRow = { title: title.trim(), audience, channel: "Email + Push", date: new Date().toISOString().slice(0, 10), body: draft.trim() };
+    setSending(true);
+    if (isSupabaseConfigured) {
+      supabase.from("announcements").insert(newRow).select().single().then(({ data: inserted, error }) => {
+        if (error) {
+          console.warn("Could not save announcement, keeping local only:", error.message);
+          setAnnouncements((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+        } else {
+          setAnnouncements((arr) => [inserted, ...arr]);
+        }
+        setSending(false);
+        setTitle("");
+        setDraft("");
+      });
+    } else {
+      setAnnouncements((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+      setSending(false);
+      setTitle("");
+      setDraft("");
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {(loading || usingLiveData) && (
+        <div>
+          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+          {usingLiveData && <Pill tone="green">Live data</Pill>}
+        </div>
+      )}
       {canCompose && (
         <Card>
           <SectionHeader title="Compose Announcement" />
@@ -46,6 +99,12 @@ function CommunicationModule({ role }) {
             <Pill tone="indigo">Email</Pill>
             <Pill tone="cyan">Push</Pill>
           </div>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Announcement title…"
+            style={{ width: "100%", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 13.5, outline: "none", marginBottom: 10 }}
+          />
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -57,8 +116,8 @@ function CommunicationModule({ role }) {
             <button onClick={aiDraft} disabled={drafting} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigoSoft, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               {drafting ? <Loader2 size={14} className="spin" /> : <Wand2 size={14} />} AI Draft Assist
             </button>
-            <button style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-              <Send size={14} /> Send to {audience}
+            <button onClick={sendAnnouncement} disabled={sending || !title.trim() || !draft.trim()} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: sending || !title.trim() || !draft.trim() ? 0.6 : 1 }}>
+              {sending ? <Loader2 size={14} className="spin" /> : <Send size={14} />} Send to {audience}
             </button>
           </div>
         </Card>
@@ -66,7 +125,7 @@ function CommunicationModule({ role }) {
       <Card>
         <SectionHeader title={canCompose ? "Sent History" : "Inbox"} />
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {ANNOUNCEMENTS.map((a) => (
+          {announcements.map((a) => (
             <div key={a.id} style={{ paddingBottom: 14, borderBottom: `1px solid ${C.borderSoft}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{a.title}</span>
@@ -84,6 +143,5 @@ function CommunicationModule({ role }) {
     </div>
   );
 }
-
 
 export { CommunicationModule };

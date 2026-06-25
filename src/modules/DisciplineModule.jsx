@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  AlertTriangle, ShieldCheck, Plus, CheckCircle2, UserX, TrendingDown, Award, MessageSquareWarning, Gavel, Sparkles, Info
+  AlertTriangle, ShieldCheck, Plus, CheckCircle2, UserX, TrendingDown, Award, MessageSquareWarning, Gavel, Sparkles, Info, Loader2
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell
 } from "recharts";
 import { C, monoFont, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, Avatar, Tag, Table, Modal, CustomTooltip } from "../components/ui";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 function severityTone(s) { return s === "Severe" || s === "High" ? "red" : s === "Moderate" || s === "Watch" ? "amber" : "green"; }
 function statusTone(s) {
@@ -18,7 +19,7 @@ function statusTone(s) {
 const STUDENT_NAMES = ["Tadiwa Mhofu", "Anesu Chitate", "Liam Osei", "Rutendo Marecha", "Brian Mutasa", "Chiedza Goredema", "Kudzai Nyamande", "Stephanie Mhike", "Tinotenda Chigumba", "Maria Fernandez", "Tapiwa Chirwa", "Natasha Sibanda"];
 const CATEGORIES = ["Bullying", "Disruptive Behavior", "Dress Code Violation", "Academic Dishonesty", "Vandalism", "Fighting", "Truancy", "Disrespect to Staff"];
 
-const INCIDENTS_INIT = [
+const MOCK_INCIDENTS = [
   { id: 1, student: "Kudzai Nyamande", cls: "Form 2A", date: "2026-06-10", category: "Disruptive Behavior", severity: "Moderate", reportedBy: "Mr. S. Ndlovu", description: "Repeatedly talking during Physics lesson, ignored two verbal warnings.", actionTaken: "Verbal warning issued, parent contacted.", parentNotified: true, status: "Resolved" },
   { id: 2, student: "Liam Osei", cls: "Form 2A", date: "2026-06-15", category: "Truancy", severity: "Severe", reportedBy: "Mrs. Patience Mhike", description: "Missed three consecutive days without communication from guardian.", actionTaken: "Meeting scheduled with guardian.", parentNotified: true, status: "Open" },
   { id: 3, student: "Brian Mutasa", cls: "Form 3A", date: "2026-06-17", category: "Dress Code Violation", severity: "Minor", reportedBy: "Mrs. P. Gumbo", description: "Not wearing correct school shoes for the second time this term.", actionTaken: "Reminder issued, logged for repeat tracking.", parentNotified: false, status: "Resolved" },
@@ -26,10 +27,19 @@ const INCIDENTS_INIT = [
   { id: 5, student: "Kudzai Nyamande", cls: "Form 2A", date: "2026-05-22", category: "Fighting", severity: "Severe", reportedBy: "Mr. D. Banda", description: "Physical altercation with another student during break time.", actionTaken: "3-day suspension issued.", parentNotified: true, status: "Resolved" },
 ];
 
-const SUSPENSIONS_INIT = [
+const MOCK_SUSPENSIONS = [
   { id: 1, student: "Kudzai Nyamande", cls: "Form 2A", reason: "Physical altercation with another student", start: "2026-05-25", end: "2026-05-27", days: 3, status: "Completed", approvedBy: "Mrs. Patience Mhike" },
   { id: 2, student: "Joseph Manyeza", cls: "Form 4A", reason: "Repeated disruptive behavior despite prior warnings", start: "2026-06-15", end: "2026-06-17", days: 2, status: "Active", approvedBy: "Mrs. Patience Mhike" },
 ];
+
+function normalizeIncident(row) {
+  return {
+    ...row,
+    reportedBy: row.reportedBy ?? row.reported_by,
+    actionTaken: row.actionTaken ?? row.action_taken,
+    parentNotified: row.parentNotified ?? row.parent_notified,
+  };
+}
 
 const BEHAVIOR_POINTS = [
   { name: "Natasha Sibanda", cls: "Form 1A", merits: 14, demerits: 0 },
@@ -146,10 +156,8 @@ function NewIncidentModal({ open, onClose, onSubmit }) {
 }
 
 /* ============================== ADMIN VIEW ============================== */
-function DisciplineAdminView() {
+function DisciplineAdminView({ incidents, setIncidents, suspensions, loading, usingLiveData }) {
   const [tab, setTab] = useState("incidents");
-  const [incidents, setIncidents] = useState(INCIDENTS_INIT);
-  const [suspensions, setSuspensions] = useState(SUSPENSIONS_INIT);
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [newIncidentOpen, setNewIncidentOpen] = useState(false);
 
@@ -160,10 +168,31 @@ function DisciplineAdminView() {
   function resolveIncident(id) {
     setIncidents((arr) => arr.map((i) => (i.id === id ? { ...i, status: "Resolved" } : i)));
     setSelectedIncident(null);
+    if (isSupabaseConfigured) {
+      supabase.from("incidents").update({ status: "Resolved" }).eq("id", id).then(({ error }) => {
+        if (error) console.warn("Could not persist resolution:", error.message);
+      });
+    }
   }
 
   function addIncident(data) {
-    setIncidents((arr) => [{ id: Date.now(), date: new Date().toISOString().slice(0, 10), cls: "—", reportedBy: "Mrs. Patience Mhike", actionTaken: "Pending review.", parentNotified: false, status: "Open", ...data }, ...arr]);
+    const newRow = { date: new Date().toISOString().slice(0, 10), cls: "—", reportedBy: "Mrs. Patience Mhike", actionTaken: "Pending review.", parentNotified: false, status: "Open", ...data };
+    if (isSupabaseConfigured) {
+      supabase.from("incidents").insert({
+        student: newRow.student, cls: newRow.cls, date: newRow.date, category: newRow.category,
+        severity: newRow.severity, reported_by: newRow.reportedBy, description: newRow.description,
+        action_taken: newRow.actionTaken, parent_notified: newRow.parentNotified, status: newRow.status,
+      }).select().single().then(({ data: inserted, error }) => {
+        if (error) {
+          console.warn("Could not save incident, keeping local only:", error.message);
+          setIncidents((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+        } else {
+          setIncidents((arr) => [normalizeIncident(inserted), ...arr]);
+        }
+      });
+    } else {
+      setIncidents((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+    }
     setNewIncidentOpen(false);
   }
 
@@ -172,6 +201,12 @@ function DisciplineAdminView() {
 
   return (
     <div>
+      {(loading || usingLiveData) && (
+        <div style={{ marginBottom: 16 }}>
+          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+          {usingLiveData && <Pill tone="green">Live data</Pill>}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
         <StatCard icon={AlertTriangle} label="Open Incidents" value={openCount} tone="amber" />
         <StatCard icon={UserX} label="Active Suspensions" value={activeSuspensions} tone="red" />
@@ -301,15 +336,30 @@ function DisciplineAdminView() {
 }
 
 /* ============================== TEACHER VIEW ============================== */
-function DisciplineTeacherView() {
+function DisciplineTeacherView({ incidents, setIncidents }) {
   const teacherName = "Mr. T. Moyo";
-  const [incidents, setIncidents] = useState(INCIDENTS_INIT);
   const [newIncidentOpen, setNewIncidentOpen] = useState(false);
   const myReports = incidents.filter((i) => i.reportedBy === teacherName);
   const myClassPoints = BEHAVIOR_POINTS.filter((s) => s.cls === "Form 4A" || s.cls === "Form 1A");
 
   function addIncident(data) {
-    setIncidents((arr) => [{ id: Date.now(), date: new Date().toISOString().slice(0, 10), cls: "—", reportedBy: teacherName, actionTaken: "Pending review.", parentNotified: false, status: "Open", ...data }, ...arr]);
+    const newRow = { date: new Date().toISOString().slice(0, 10), cls: "—", reportedBy: teacherName, actionTaken: "Pending review.", parentNotified: false, status: "Open", ...data };
+    if (isSupabaseConfigured) {
+      supabase.from("incidents").insert({
+        student: newRow.student, cls: newRow.cls, date: newRow.date, category: newRow.category,
+        severity: newRow.severity, reported_by: newRow.reportedBy, description: newRow.description,
+        action_taken: newRow.actionTaken, parent_notified: newRow.parentNotified, status: newRow.status,
+      }).select().single().then(({ data: inserted, error }) => {
+        if (error) {
+          console.warn("Could not save incident, keeping local only:", error.message);
+          setIncidents((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+        } else {
+          setIncidents((arr) => [normalizeIncident(inserted), ...arr]);
+        }
+      });
+    } else {
+      setIncidents((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+    }
     setNewIncidentOpen(false);
   }
 
@@ -351,10 +401,10 @@ function DisciplineTeacherView() {
 }
 
 /* ============================== STUDENT / PARENT VIEW ============================== */
-function DisciplinePersonalView({ role }) {
+function DisciplinePersonalView({ role, incidents }) {
   const studentName = "Tadiwa Mhofu";
   const myPoints = BEHAVIOR_POINTS.find((s) => s.name === studentName);
-  const myIncidents = INCIDENTS_INIT.filter((i) => i.student === studentName);
+  const myIncidents = incidents.filter((i) => i.student === studentName);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -380,9 +430,30 @@ function DisciplinePersonalView({ role }) {
 }
 
 function DisciplineModule({ role }) {
-  if (role === "admin") return <DisciplineAdminView />;
-  if (role === "teacher") return <DisciplineTeacherView />;
-  return <DisciplinePersonalView role={role} />;
+  const [incidents, setIncidents] = useState(MOCK_INCIDENTS);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase
+      .from("incidents")
+      .select("*")
+      .order("date", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Falling back to demo incident data:", error.message);
+        } else if (data && data.length > 0) {
+          setIncidents(data.map(normalizeIncident));
+          setUsingLiveData(true);
+        }
+        setLoading(false);
+      });
+  }, []);
+
+  if (role === "admin") return <DisciplineAdminView incidents={incidents} setIncidents={setIncidents} suspensions={MOCK_SUSPENSIONS} loading={loading} usingLiveData={usingLiveData} />;
+  if (role === "teacher") return <DisciplineTeacherView incidents={incidents} setIncidents={setIncidents} />;
+  return <DisciplinePersonalView role={role} incidents={incidents} />;
 }
 
 export { DisciplineModule };
