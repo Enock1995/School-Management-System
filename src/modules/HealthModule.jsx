@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   HeartPulse, Syringe, Pill as PillIcon, ClipboardPlus, AlertTriangle,
-  CheckCircle2, Phone, Droplet, Info, Plus, Search
+  CheckCircle2, Phone, Droplet, Info, Plus, Search, Loader2
 } from "lucide-react";
 import { C, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, Avatar, Tag, Table, Modal, statusTone } from "../components/ui";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
-const CLINIC_VISITS_INIT = [
+const MOCK_CLINIC_VISITS = [
   { id: 1, student: "Brian Mutasa", cls: "Form 3A", date: "2026-06-17", reason: "Headache and mild fever", treatment: "Paracetamol administered, rested in clinic for 1 hour.", followUp: "Monitor temperature tomorrow morning.", status: "Monitoring" },
   { id: 2, student: "Natasha Sibanda", cls: "Form 1A", date: "2026-06-15", reason: "Minor cut during PE", treatment: "Wound cleaned and dressed.", followUp: "None required.", status: "Resolved" },
   { id: 3, student: "Kudzai Nyamande", cls: "Form 2A", date: "2026-06-10", reason: "Asthma flare-up during sports", treatment: "Inhaler administered, recovered within 15 minutes.", followUp: "Review asthma action plan with parent.", status: "Resolved" },
@@ -40,6 +41,11 @@ const AI_HEALTH_ALERTS = [
   { student: "Maria Fernandez", severity: "Watch", msg: "Repeated mild allergic reactions logged this term — recommend confirming current allergen triggers with parent.", date: "Jun 16" },
   { student: "Brian Mutasa", severity: "High", msg: "Tetanus vaccination is overdue — recommend parent notification for catch-up scheduling.", date: "Jun 14" },
 ];
+
+// Supabase column is follow_up (snake_case); normalize to followUp for the UI.
+function normalizeVisit(row) {
+  return { ...row, followUp: row.followUp ?? row.follow_up };
+}
 
 /* ============================== VISIT DETAIL MODAL ============================== */
 function VisitModal({ visit, onResolve, onClose }) {
@@ -109,9 +115,8 @@ function NewVisitModal({ open, onClose, onSubmit, studentNames }) {
 }
 
 /* ============================== ADMIN / NURSE VIEW ============================== */
-function HealthAdminView() {
+function HealthAdminView({ visits, setVisits, loading, usingLiveData }) {
   const [tab, setTab] = useState("visits");
-  const [visits, setVisits] = useState(CLINIC_VISITS_INIT);
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [newVisitOpen, setNewVisitOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -124,16 +129,42 @@ function HealthAdminView() {
   function resolveVisit(id) {
     setVisits((arr) => arr.map((v) => (v.id === id ? { ...v, status: "Resolved" } : v)));
     setSelectedVisit(null);
+    if (isSupabaseConfigured) {
+      supabase.from("clinic_visits").update({ status: "Resolved" }).eq("id", id).then(({ error }) => {
+        if (error) console.warn("Could not persist resolution:", error.message);
+      });
+    }
   }
 
   function addVisit(data) {
     const profile = MEDICAL_PROFILES.find((p) => p.name === data.student);
-    setVisits((arr) => [{ id: Date.now(), date: new Date().toISOString().slice(0, 10), cls: profile ? profile.cls : "—", treatment: "Pending assessment.", followUp: "To be determined.", status: "Monitoring", ...data }, ...arr]);
+    const newRow = { date: new Date().toISOString().slice(0, 10), cls: profile ? profile.cls : "—", treatment: "Pending assessment.", followUp: "To be determined.", status: "Monitoring", ...data };
+    if (isSupabaseConfigured) {
+      supabase.from("clinic_visits").insert({
+        student: newRow.student, cls: newRow.cls, date: newRow.date, reason: newRow.reason,
+        treatment: newRow.treatment, follow_up: newRow.followUp, status: newRow.status,
+      }).select().single().then(({ data: inserted, error }) => {
+        if (error) {
+          console.warn("Could not save clinic visit, keeping local only:", error.message);
+          setVisits((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+        } else {
+          setVisits((arr) => [normalizeVisit(inserted), ...arr]);
+        }
+      });
+    } else {
+      setVisits((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+    }
     setNewVisitOpen(false);
   }
 
   return (
     <div>
+      {(loading || usingLiveData) && (
+        <div style={{ marginBottom: 16 }}>
+          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+          {usingLiveData && <Pill tone="green">Live data</Pill>}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
         <StatCard icon={ClipboardPlus} label="Clinic Visits (Term)" value={visits.length} tone="indigo" />
         <StatCard icon={HeartPulse} label="Currently Monitoring" value={monitoring} tone="amber" />
@@ -251,15 +282,29 @@ function HealthAdminView() {
 }
 
 /* ============================== TEACHER VIEW ============================== */
-function HealthTeacherView() {
+function HealthTeacherView({ visits, setVisits }) {
   const [newVisitOpen, setNewVisitOpen] = useState(false);
-  const [visits, setVisits] = useState(CLINIC_VISITS_INIT);
   const studentNames = MEDICAL_PROFILES.map((p) => p.name);
   const myReferrals = visits.filter((v) => v.cls === "Form 4A" || v.cls === "Form 1A");
 
   function addVisit(data) {
     const profile = MEDICAL_PROFILES.find((p) => p.name === data.student);
-    setVisits((arr) => [{ id: Date.now(), date: new Date().toISOString().slice(0, 10), cls: profile ? profile.cls : "—", treatment: "Pending assessment.", followUp: "To be determined.", status: "Monitoring", ...data }, ...arr]);
+    const newRow = { date: new Date().toISOString().slice(0, 10), cls: profile ? profile.cls : "—", treatment: "Pending assessment.", followUp: "To be determined.", status: "Monitoring", ...data };
+    if (isSupabaseConfigured) {
+      supabase.from("clinic_visits").insert({
+        student: newRow.student, cls: newRow.cls, date: newRow.date, reason: newRow.reason,
+        treatment: newRow.treatment, follow_up: newRow.followUp, status: newRow.status,
+      }).select().single().then(({ data: inserted, error }) => {
+        if (error) {
+          console.warn("Could not save clinic visit, keeping local only:", error.message);
+          setVisits((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+        } else {
+          setVisits((arr) => [normalizeVisit(inserted), ...arr]);
+        }
+      });
+    } else {
+      setVisits((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+    }
     setNewVisitOpen(false);
   }
 
@@ -288,9 +333,9 @@ function HealthTeacherView() {
 }
 
 /* ============================== STUDENT / PARENT VIEW ============================== */
-function HealthPersonalView({ role }) {
+function HealthPersonalView({ role, visits }) {
   const me = MEDICAL_PROFILES[0]; // Tadiwa Mhofu, demo profile
-  const myVisits = CLINIC_VISITS_INIT.filter((v) => v.student === me.name);
+  const myVisits = visits.filter((v) => v.student === me.name);
   const myVax = VACCINATIONS.filter((v) => v.student === me.name);
 
   return (
@@ -352,9 +397,30 @@ function HealthPersonalView({ role }) {
 /* ============================== ROOT (preview wrapper) ============================== */
 
 function HealthModule({ role }) {
-  if (role === "admin") return <HealthAdminView />;
-  if (role === "teacher") return <HealthTeacherView />;
-  return <HealthPersonalView role={role} />;
+  const [visits, setVisits] = useState(MOCK_CLINIC_VISITS);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase
+      .from("clinic_visits")
+      .select("*")
+      .order("date", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Falling back to demo clinic visit data:", error.message);
+        } else if (data && data.length > 0) {
+          setVisits(data.map(normalizeVisit));
+          setUsingLiveData(true);
+        }
+        setLoading(false);
+      });
+  }, []);
+
+  if (role === "admin") return <HealthAdminView visits={visits} setVisits={setVisits} loading={loading} usingLiveData={usingLiveData} />;
+  if (role === "teacher") return <HealthTeacherView visits={visits} setVisits={setVisits} />;
+  return <HealthPersonalView role={role} visits={visits} />;
 }
 
 export { HealthModule };

@@ -1,16 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Home, Users, Wallet, Search, Plus, Bed, Phone, UserCircle2, Moon, Sun, Coffee
+  Home, Users, Wallet, Search, Plus, Bed, Phone, UserCircle2, Moon, Sun, Coffee, Loader2
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip
 } from "recharts";
 import { C, fmtMoney, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, ProgressBar, Avatar, Tag, Table, Modal, CustomTooltip, statusTone } from "../components/ui";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 const HOUSES = ["Acacia House", "Baobab House", "Msasa House", "Mopane House"];
 
-const ROOMS = [
+const MOCK_ROOMS = [
   { id: "A-12", house: "Acacia House", capacity: 4, occupants: 4, status: "Full" },
   { id: "A-13", house: "Acacia House", capacity: 4, occupants: 3, status: "Available" },
   { id: "A-14", house: "Acacia House", capacity: 4, occupants: 2, status: "Available" },
@@ -20,7 +21,7 @@ const ROOMS = [
   { id: "MP-02", house: "Mopane House", capacity: 4, occupants: 3, status: "Available" },
 ];
 
-const BOARDERS = [
+const MOCK_BOARDERS = [
   { name: "Tadiwa Mhofu", cls: "Form 4A", house: "Acacia House", room: "A-12", guardian: "Mr. C. Mhofu", emergencyPhone: "+263 77 412 9981", admitted: "2024-01-15", status: "Active", dietary: "None" },
   { name: "Tinotenda Chigumba", cls: "Form 6A", house: "Acacia House", room: "A-12", guardian: "Mr. E. Chigumba", emergencyPhone: "+263 71 442 9087", admitted: "2022-01-10", status: "Active", dietary: "Lactose intolerant" },
   { name: "Brian Mutasa", cls: "Form 3A", house: "Acacia House", room: "A-12", guardian: "Mr. W. Mutasa", emergencyPhone: "+263 77 334 8821", admitted: "2025-01-20", status: "Active", dietary: "None" },
@@ -46,10 +47,15 @@ const HOSTEL_FEES = [
   { house: "Mopane House", boarders: 22, termFee: 380, collected: 7600, target: 8360 },
 ];
 
+// Supabase column is emergency_phone (snake_case); normalize to emergencyPhone for the UI.
+function normalizeBoarder(row) {
+  return { ...row, emergencyPhone: row.emergencyPhone ?? row.emergency_phone };
+}
+
 /* ============================== ROOM DETAIL MODAL ============================== */
-function RoomModal({ room, onClose }) {
+function RoomModal({ room, boarders, onClose }) {
   if (!room) return null;
-  const occupants = BOARDERS.filter((b) => b.room === room.id);
+  const occupants = boarders.filter((b) => b.room === room.id);
   return (
     <Modal open={!!room} onClose={onClose} title={`Room ${room.id} — ${room.house}`} wide>
       <div style={{ display: "flex", gap: 16, marginBottom: 18 }}>
@@ -80,23 +86,23 @@ function RoomModal({ room, onClose }) {
 }
 
 /* ============================== ADMIN / HOSTEL MASTER VIEW ============================== */
-function HostelAdminView() {
+function HostelAdminView({ rooms, boarders }) {
   const [tab, setTab] = useState("rooms");
   const [houseFilter, setHouseFilter] = useState("All");
   const [query, setQuery] = useState("");
   const [selectedRoom, setSelectedRoom] = useState(null);
 
-  const filteredRooms = ROOMS.filter((r) => houseFilter === "All" || r.house === houseFilter);
-  const filteredBoarders = BOARDERS.filter((b) => (houseFilter === "All" || b.house === houseFilter) && b.name.toLowerCase().includes(query.toLowerCase()));
-  const totalBeds = ROOMS.reduce((s, r) => s + r.capacity, 0);
-  const totalOccupied = ROOMS.reduce((s, r) => s + r.occupants, 0);
+  const filteredRooms = rooms.filter((r) => houseFilter === "All" || r.house === houseFilter);
+  const filteredBoarders = boarders.filter((b) => (houseFilter === "All" || b.house === houseFilter) && b.name.toLowerCase().includes(query.toLowerCase()));
+  const totalBeds = rooms.reduce((s, r) => s + r.capacity, 0);
+  const totalOccupied = rooms.reduce((s, r) => s + r.occupants, 0);
   const totalCollected = HOSTEL_FEES.reduce((s, h) => s + h.collected, 0);
   const totalTarget = HOSTEL_FEES.reduce((s, h) => s + h.target, 0);
 
   return (
     <div>
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
-        <StatCard icon={Users} label="Total Boarders" value={BOARDERS.length} tone="indigo" />
+        <StatCard icon={Users} label="Total Boarders" value={boarders.length} tone="indigo" />
         <StatCard icon={Bed} label="Bed Occupancy" value={`${totalOccupied}/${totalBeds}`} tone="cyan" />
         <StatCard icon={Home} label="Boarding Houses" value={HOUSES.length} tone="green" />
         <StatCard icon={Wallet} label="Term Fees Collected" value={fmtMoney(totalCollected)} tone="amber" />
@@ -190,7 +196,7 @@ function HostelAdminView() {
           <div style={{ marginTop: 18 }}>
             <SectionHeader title="Dietary Requirements on File" />
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              {BOARDERS.filter((b) => b.dietary !== "None").map((b) => (
+              {boarders.filter((b) => b.dietary !== "None").map((b) => (
                 <Pill key={b.name} tone="amber">{b.name} — {b.dietary}</Pill>
               ))}
             </div>
@@ -234,15 +240,15 @@ function HostelAdminView() {
         </div>
       )}
 
-      <RoomModal room={selectedRoom} onClose={() => setSelectedRoom(null)} />
+      <RoomModal room={selectedRoom} boarders={boarders} onClose={() => setSelectedRoom(null)} />
     </div>
   );
 }
 
 /* ============================== STUDENT / PARENT VIEW ============================== */
-function HostelPersonalView({ role }) {
-  const me = BOARDERS[0]; // Tadiwa Mhofu, demo boarder
-  const roommates = BOARDERS.filter((b) => b.room === me.room && b.name !== me.name);
+function HostelPersonalView({ role, boarders }) {
+  const me = boarders[0]; // Tadiwa Mhofu, demo boarder
+  const roommates = boarders.filter((b) => b.room === me.room && b.name !== me.name);
   const todayIndex = new Date().getDay(); // 0=Sun
   const dayMap = [6, 0, 1, 2, 3, 4, 5]; // map JS Sunday-first to our Monday-first array index
   const today = MEAL_PLAN[dayMap[todayIndex]];
@@ -310,7 +316,44 @@ function HostelPersonalView({ role }) {
 }
 
 function HostelModule({ role }) {
-  return role === "admin" ? <HostelAdminView /> : <HostelPersonalView role={role} />;
+  const [rooms, setRooms] = useState(MOCK_ROOMS);
+  const [boarders, setBoarders] = useState(MOCK_BOARDERS);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    Promise.all([
+      supabase.from("rooms").select("*").order("id"),
+      supabase.from("boarders").select("*").order("name"),
+    ]).then(([roomsRes, boardersRes]) => {
+      if (roomsRes.error) {
+        console.warn("Falling back to demo room data:", roomsRes.error.message);
+      } else if (roomsRes.data && roomsRes.data.length > 0) {
+        setRooms(roomsRes.data);
+        setUsingLiveData(true);
+      }
+      if (boardersRes.error) {
+        console.warn("Falling back to demo boarder data:", boardersRes.error.message);
+      } else if (boardersRes.data && boardersRes.data.length > 0) {
+        setBoarders(boardersRes.data.map(normalizeBoarder));
+        setUsingLiveData(true);
+      }
+      setLoading(false);
+    });
+  }, []);
+
+  return (
+    <div>
+      {(loading || usingLiveData) && (
+        <div style={{ marginBottom: 16 }}>
+          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+          {usingLiveData && <Pill tone="green">Live data</Pill>}
+        </div>
+      )}
+      {role === "admin" ? <HostelAdminView rooms={rooms} boarders={boarders} /> : <HostelPersonalView role={role} boarders={boarders} />}
+    </div>
+  );
 }
 
 export { HostelModule };

@@ -1,19 +1,47 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  MapPin
+  MapPin, Loader2
 } from "lucide-react";
 import { C, fmtMoney, monoFont, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, ProgressBar, Avatar, Table, Modal, Tag, CustomTooltip, riskTone, statusTone } from "../components/ui";
-import { CLASSES, SUBJECTS, STUDENTS, APPLICANTS, STAFF, ENROLLMENT_TREND, REVENUE_TREND, CLASS_PERFORMANCE, FEE_STATUS, AI_ALERTS, EXAMS, RESULTS_F4A_MATH, INVOICES, PAYMENT_METHODS, ANNOUNCEMENTS, BOOKS, LOANS, ROUTES, TIMETABLE_F4A } from "../data/mockData";
+import { ROUTES as MOCK_ROUTES } from "../data/mockData";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 function TransportModule({ role }) {
+  const [routes, setRoutes] = useState(MOCK_ROUTES);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase
+      .from("routes")
+      .select("*")
+      .order("id")
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Falling back to demo route data:", error.message);
+        } else if (data && data.length > 0) {
+          setRoutes(data);
+          setUsingLiveData(true);
+        }
+        setLoading(false);
+      });
+  }, []);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {(loading || usingLiveData) && (
+        <div>
+          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+          {usingLiveData && <Pill tone="green">Live data</Pill>}
+        </div>
+      )}
       <Card>
         <SectionHeader title="Live Route Map" subtitle="Approximate positions, refreshed every 2 minutes" />
         <svg viewBox="0 0 600 160" width="100%" height="160">
           <line x1="20" y1="80" x2="580" y2="80" stroke={C.border} strokeWidth="3" strokeDasharray="2 6" />
-          {ROUTES.map((r, i) => {
+          {routes.map((r, i) => {
             const x = r.status === "At School" ? 560 : r.status === "Maintenance" ? 40 : 180 + i * 130;
             const color = r.status === "On Route" ? C.cyan : r.status === "At School" ? C.green : C.red;
             return (
@@ -28,7 +56,7 @@ function TransportModule({ role }) {
         </svg>
       </Card>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
-        {ROUTES.map((r) => (
+        {routes.map((r) => (
           <Card key={r.id}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
@@ -52,6 +80,5 @@ function TransportModule({ role }) {
     </div>
   );
 }
-
 
 export { TransportModule };
