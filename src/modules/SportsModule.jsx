@@ -1,20 +1,25 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Plus, Trophy, Users, CalendarDays, ClipboardList, MapPin, Award,
-  BookOpen, Drama, FlaskConical, Camera, Swords, Star, Heart
+  BookOpen, Drama, FlaskConical, Camera, Swords, Star, Heart, Loader2
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip
 } from "recharts";
 import { C, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, Avatar, Tag, Table, Modal, CustomTooltip, statusTone } from "../components/ui";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
-const TEAMS = [
-  { id: "T1", name: "Football", category: "Boys", coach: "Mr. D. Banda", icon: Trophy },
-  { id: "T2", name: "Netball", category: "Girls", coach: "Mrs. R. Chikore", icon: Trophy },
-  { id: "T3", name: "Athletics", category: "Mixed", coach: "Mr. S. Ndlovu", icon: Award },
-  { id: "T4", name: "Swimming", category: "Mixed", coach: "Mrs. P. Gumbo", icon: Award },
-  { id: "T5", name: "Basketball", category: "Boys", coach: "Mr. T. Moyo", icon: Trophy },
+// Icons can't be stored in Postgres — teams/clubs store the icon's name as text,
+// and this map resolves that string back to the actual component for rendering.
+const ICON_MAP = { Trophy, Award, BookOpen, Swords, Drama, FlaskConical, Camera, Heart };
+
+const MOCK_TEAMS = [
+  { id: "T1", name: "Football", category: "Boys", coach: "Mr. D. Banda", icon: "Trophy" },
+  { id: "T2", name: "Netball", category: "Girls", coach: "Mrs. R. Chikore", icon: "Trophy" },
+  { id: "T3", name: "Athletics", category: "Mixed", coach: "Mr. S. Ndlovu", icon: "Award" },
+  { id: "T4", name: "Swimming", category: "Mixed", coach: "Mrs. P. Gumbo", icon: "Award" },
+  { id: "T5", name: "Basketball", category: "Boys", coach: "Mr. T. Moyo", icon: "Trophy" },
 ];
 
 const FIXTURES = [
@@ -35,13 +40,13 @@ const ATHLETES = [
   { name: "Kudzai Nyamande", cls: "Form 2A", team: "Athletics", position: "200m Sprint" },
 ];
 
-const CLUBS = [
-  { id: "C1", name: "Debate Club", category: "Academic", patron: "Mrs. R. Chikore", schedule: "Wednesdays 3:30 PM", members: 18, icon: BookOpen },
-  { id: "C2", name: "Chess Club", category: "Academic", patron: "Mr. T. Moyo", schedule: "Tuesdays 3:30 PM", members: 14, icon: Swords },
-  { id: "C3", name: "Drama Society", category: "Creative", patron: "Mrs. P. Gumbo", schedule: "Thursdays 3:30 PM", members: 22, icon: Drama },
-  { id: "C4", name: "Science Club", category: "Academic", patron: "Mr. S. Ndlovu", schedule: "Mondays 3:30 PM", members: 16, icon: FlaskConical },
-  { id: "C5", name: "Interact (Community Service)", category: "Service", patron: "Mrs. Patience Mhike", schedule: "Fridays 2:00 PM", members: 20, icon: Heart },
-  { id: "C6", name: "Photography Club", category: "Creative", patron: "Mr. D. Banda", schedule: "Wednesdays 3:30 PM", members: 11, icon: Camera },
+const MOCK_CLUBS = [
+  { id: "C1", name: "Debate Club", category: "Academic", patron: "Mrs. R. Chikore", schedule: "Wednesdays 3:30 PM", members: 18, icon: "BookOpen" },
+  { id: "C2", name: "Chess Club", category: "Academic", patron: "Mr. T. Moyo", schedule: "Tuesdays 3:30 PM", members: 14, icon: "Swords" },
+  { id: "C3", name: "Drama Society", category: "Creative", patron: "Mrs. P. Gumbo", schedule: "Thursdays 3:30 PM", members: 22, icon: "Drama" },
+  { id: "C4", name: "Science Club", category: "Academic", patron: "Mr. S. Ndlovu", schedule: "Mondays 3:30 PM", members: 16, icon: "FlaskConical" },
+  { id: "C5", name: "Interact (Community Service)", category: "Service", patron: "Mrs. Patience Mhike", schedule: "Fridays 2:00 PM", members: 20, icon: "Heart" },
+  { id: "C6", name: "Photography Club", category: "Creative", patron: "Mr. D. Banda", schedule: "Wednesdays 3:30 PM", members: 11, icon: "Camera" },
 ];
 
 const CLUB_MEMBERS = {
@@ -52,8 +57,6 @@ const CLUB_MEMBERS = {
   "Interact (Community Service)": ["Tadiwa Mhofu", "Chiedza Goredema", "Stephanie Mhike"],
   "Photography Club": ["Maria Fernandez", "Tinotenda Chigumba"],
 };
-
-const MEMBERSHIP_CHART = CLUBS.map((c) => ({ name: c.name.split(" ")[0], members: c.members }));
 
 const ACTIVITY_LOG = [
   { title: "Debate Club wins Regional Inter-School Debate", group: "Debate Club", date: "2026-06-10", summary: "Springfield's team placed 1st against 8 competing schools in the regional finals held in Harare." },
@@ -88,18 +91,25 @@ function ClubModal({ club, onClose }) {
 }
 
 /* ============================== ADMIN VIEW ============================== */
-function SportsAdminView() {
+function SportsAdminView({ teams, clubs, loading, usingLiveData }) {
   const [tab, setTab] = useState("fixtures");
   const [selectedClub, setSelectedClub] = useState(null);
 
   const upcoming = FIXTURES.filter((f) => f.status === "Upcoming").length;
   const wins = FIXTURES.filter((f) => f.result && f.result.startsWith("Won")).length;
-  const totalMembers = CLUBS.reduce((s, c) => s + c.members, 0);
+  const totalMembers = clubs.reduce((s, c) => s + c.members, 0);
+  const membershipChart = clubs.map((c) => ({ name: c.name.split(" ")[0], members: c.members }));
 
   return (
     <div>
+      {(loading || usingLiveData) && (
+        <div style={{ marginBottom: 16 }}>
+          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+          {usingLiveData && <Pill tone="green">Live data</Pill>}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
-        <StatCard icon={Trophy} label="Active Teams" value={TEAMS.length} tone="indigo" />
+        <StatCard icon={Trophy} label="Active Teams" value={teams.length} tone="indigo" />
         <StatCard icon={CalendarDays} label="Upcoming Fixtures" value={upcoming} tone="cyan" />
         <StatCard icon={Award} label="Wins This Term" value={wins} tone="green" />
         <StatCard icon={Users} label="Club Members" value={totalMembers} tone="amber" />
@@ -115,8 +125,8 @@ function SportsAdminView() {
       {tab === "fixtures" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
-            {TEAMS.map((t) => {
-              const Icon = t.icon;
+            {teams.map((t) => {
+              const Icon = ICON_MAP[t.icon] || Trophy;
               return (
                 <Card key={t.id}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -178,13 +188,13 @@ function SportsAdminView() {
           <Table
             onRowClick={setSelectedClub}
             columns={[
-              { key: "name", label: "Club", render: (r) => { const Icon = r.icon; return <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 28, height: 28, borderRadius: 8, background: C.indigoSoft, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} color={C.indigo} /></div><span style={{ fontWeight: 600 }}>{r.name}</span></div>; } },
+              { key: "name", label: "Club", render: (r) => { const Icon = ICON_MAP[r.icon] || BookOpen; return <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 28, height: 28, borderRadius: 8, background: C.indigoSoft, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} color={C.indigo} /></div><span style={{ fontWeight: 600 }}>{r.name}</span></div>; } },
               { key: "category", label: "Category", render: (r) => <Pill tone="slate">{r.category}</Pill> },
               { key: "patron", label: "Patron" },
               { key: "schedule", label: "Schedule" },
               { key: "members", label: "Members", align: "center" },
             ]}
-            rows={CLUBS}
+            rows={clubs}
           />
         </Card>
       )}
@@ -194,7 +204,7 @@ function SportsAdminView() {
           <Card>
             <SectionHeader title="Club Membership" subtitle="Members per club, this term" />
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={MEMBERSHIP_CHART}>
+              <BarChart data={membershipChart}>
                 <CartesianGrid stroke={C.borderSoft} vertical={false} />
                 <XAxis dataKey="name" stroke={C.textFaint} fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis stroke={C.textFaint} fontSize={11} tickLine={false} axisLine={false} width={30} />
@@ -227,9 +237,9 @@ function SportsAdminView() {
 }
 
 /* ============================== TEACHER (COACH / PATRON) VIEW ============================== */
-function SportsTeacherView() {
-  const myTeam = TEAMS.find((t) => t.coach === "Mr. T. Moyo");
-  const myClub = CLUBS.find((c) => c.patron === "Mr. T. Moyo");
+function SportsTeacherView({ teams, clubs }) {
+  const myTeam = teams.find((t) => t.coach === "Mr. T. Moyo");
+  const myClub = clubs.find((c) => c.patron === "Mr. T. Moyo");
   const teamRoster = ATHLETES.filter((a) => a.team === (myTeam ? myTeam.name : ""));
   const teamFixtures = FIXTURES.filter((f) => f.team === (myTeam ? myTeam.name : ""));
   const clubMembers = myClub ? CLUB_MEMBERS[myClub.name] || [] : [];
@@ -272,10 +282,10 @@ function SportsTeacherView() {
 }
 
 /* ============================== STUDENT / PARENT VIEW ============================== */
-function SportsPersonalView({ role }) {
+function SportsPersonalView({ role, clubs }) {
   const studentName = "Tadiwa Mhofu";
   const myTeams = ATHLETES.filter((a) => a.name === studentName);
-  const myClubs = Object.entries(CLUB_MEMBERS).filter(([, members]) => members.includes(studentName)).map(([name]) => CLUBS.find((c) => c.name === name));
+  const myClubs = Object.entries(CLUB_MEMBERS).filter(([, members]) => members.includes(studentName)).map(([name]) => clubs.find((c) => c.name === name));
   const myFixtures = FIXTURES.filter((f) => myTeams.some((t) => t.team === f.team) && f.status === "Upcoming");
 
   return (
@@ -317,9 +327,36 @@ function SportsPersonalView({ role }) {
 /* ============================== ROOT (preview wrapper) ============================== */
 
 function SportsModule({ role }) {
-  if (role === "admin") return <SportsAdminView />;
-  if (role === "teacher") return <SportsTeacherView />;
-  return <SportsPersonalView role={role} />;
+  const [teams, setTeams] = useState(MOCK_TEAMS);
+  const [clubs, setClubs] = useState(MOCK_CLUBS);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    Promise.all([
+      supabase.from("teams").select("*").order("id"),
+      supabase.from("clubs").select("*").order("id"),
+    ]).then(([teamsRes, clubsRes]) => {
+      if (teamsRes.error) {
+        console.warn("Falling back to demo team data:", teamsRes.error.message);
+      } else if (teamsRes.data && teamsRes.data.length > 0) {
+        setTeams(teamsRes.data);
+        setUsingLiveData(true);
+      }
+      if (clubsRes.error) {
+        console.warn("Falling back to demo club data:", clubsRes.error.message);
+      } else if (clubsRes.data && clubsRes.data.length > 0) {
+        setClubs(clubsRes.data);
+        setUsingLiveData(true);
+      }
+      setLoading(false);
+    });
+  }, []);
+
+  if (role === "admin") return <SportsAdminView teams={teams} clubs={clubs} loading={loading} usingLiveData={usingLiveData} />;
+  if (role === "teacher") return <SportsTeacherView teams={teams} clubs={clubs} />;
+  return <SportsPersonalView role={role} clubs={clubs} />;
 }
 
 export { SportsModule };

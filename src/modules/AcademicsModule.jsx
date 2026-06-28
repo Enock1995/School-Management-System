@@ -4,29 +4,35 @@ import {
 } from "lucide-react";
 import { C, fmtMoney, monoFont, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, ProgressBar, Avatar, Table, Modal, Tag, CustomTooltip, riskTone, statusTone } from "../components/ui";
-import { CLASSES as MOCK_CLASSES, SUBJECTS, STUDENTS, APPLICANTS, STAFF, ENROLLMENT_TREND, REVENUE_TREND, CLASS_PERFORMANCE, FEE_STATUS, AI_ALERTS, EXAMS, RESULTS_F4A_MATH, INVOICES, PAYMENT_METHODS, ANNOUNCEMENTS, BOOKS, LOANS, ROUTES, TIMETABLE_F4A } from "../data/mockData";
+import { CLASSES as MOCK_CLASSES, SUBJECTS, STUDENTS, APPLICANTS, STAFF, ENROLLMENT_TREND, REVENUE_TREND, CLASS_PERFORMANCE, FEE_STATUS, AI_ALERTS, EXAMS, RESULTS_F4A_MATH, INVOICES, PAYMENT_METHODS, ANNOUNCEMENTS, BOOKS, LOANS, ROUTES, TIMETABLE_F4A as MOCK_TIMETABLE } from "../data/mockData";
 import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 function AcademicsModule({ role }) {
   const [classes, setClasses] = useState(MOCK_CLASSES);
+  const [timetable, setTimetable] = useState(MOCK_TIMETABLE);
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [usingLiveData, setUsingLiveData] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
-    supabase
-      .from("classes")
-      .select("*")
-      .order("id")
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn("Falling back to demo class data:", error.message);
-        } else if (data && data.length > 0) {
-          setClasses(data);
-          setUsingLiveData(true);
-        }
-        setLoading(false);
-      });
+    Promise.all([
+      supabase.from("classes").select("*").order("id"),
+      supabase.from("timetable").select("*").eq("cls", "Form 4A").order("id"),
+    ]).then(([classesRes, timetableRes]) => {
+      if (classesRes.error) {
+        console.warn("Falling back to demo class data:", classesRes.error.message);
+      } else if (classesRes.data && classesRes.data.length > 0) {
+        setClasses(classesRes.data);
+        setUsingLiveData(true);
+      }
+      if (timetableRes.error) {
+        console.warn("Falling back to demo timetable data:", timetableRes.error.message);
+      } else if (timetableRes.data && timetableRes.data.length > 0) {
+        setTimetable(timetableRes.data);
+        setUsingLiveData(true);
+      }
+      setLoading(false);
+    });
   }, []);
 
   if (role === "student") {
@@ -34,6 +40,12 @@ function AcademicsModule({ role }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <Card>
           <SectionHeader title="My Weekly Timetable" subtitle="Form 4A · Cambridge IGCSE" />
+          {(loading || usingLiveData) && (
+            <div style={{ marginBottom: 12 }}>
+              {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+              {usingLiveData && <Pill tone="green">Live data</Pill>}
+            </div>
+          )}
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
               <thead>
@@ -44,7 +56,7 @@ function AcademicsModule({ role }) {
                 </tr>
               </thead>
               <tbody>
-                {TIMETABLE_F4A.map((row, i) => (
+                {timetable.map((row, i) => (
                   <tr key={i}>
                     <td style={{ padding: "10px", color: C.textMuted, borderBottom: `1px solid ${C.borderSoft}`, ...monoFont, fontSize: 11.5 }}>{row.time}</td>
                     {["mon", "tue", "wed", "thu", "fri"].map((d) => (

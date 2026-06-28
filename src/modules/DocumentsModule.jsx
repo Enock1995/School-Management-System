@@ -1,14 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FileText, Award, Mail, FolderOpen, Search, Plus, PenTool, Clock,
-  Download, FileCheck2, Send
+  Download, FileCheck2, Send, Loader2
 } from "lucide-react";
 import { C, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, Avatar, Tag, Table, Modal, statusTone } from "../components/ui";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 const STUDENT_NAMES = ["Tadiwa Mhofu", "Anesu Chitate", "Liam Osei", "Rutendo Marecha", "Brian Mutasa", "Chiedza Goredema", "Natasha Sibanda", "Tinotenda Chigumba", "Maria Fernandez"];
 
-const DOCUMENTS_INIT = [
+const MOCK_DOCUMENTS = [
   { id: 1, title: "Certificate of Academic Excellence — Term 1 2026", type: "Certificate", student: "Natasha Sibanda", issuedDate: "2026-04-10", status: "Issued", issuedBy: "Mrs. Patience Mhike", signatureRequired: true },
   { id: 2, title: "Admission Confirmation Letter", type: "Letter", student: "Joseph Mangwana", issuedDate: "2026-06-05", status: "Signed", issuedBy: "Mrs. Patience Mhike", signatureRequired: true },
   { id: 3, title: "Fee Clearance Letter", type: "Letter", student: "Tadiwa Mhofu", issuedDate: "2026-06-15", status: "Pending Signature", issuedBy: "Ms. Lisa Marufu", signatureRequired: true },
@@ -34,6 +35,16 @@ const SIGNED_AUDIT_LOG = [
   { document: "School Leaving Certificate — Grace Mupanduki", signedBy: "Mrs. Patience Mhike", date: "2026-01-16" },
   { document: "Certificate of Academic Excellence — Natasha Sibanda", signedBy: "Mrs. Patience Mhike", date: "2026-04-11" },
 ];
+
+// Supabase columns are issued_date, issued_by, signature_required (snake_case); normalize for the UI.
+function normalizeDoc(row) {
+  return {
+    ...row,
+    issuedDate: row.issuedDate ?? row.issued_date,
+    issuedBy: row.issuedBy ?? row.issued_by,
+    signatureRequired: row.signatureRequired ?? row.signature_required,
+  };
+}
 
 /* ============================== DOCUMENT PREVIEW MODAL ============================== */
 function DocumentModal({ doc, onSign, onClose, canSign }) {
@@ -119,9 +130,8 @@ function ComposeLetterModal({ open, onClose, onSubmit }) {
 }
 
 /* ============================== ADMIN VIEW ============================== */
-function DocumentsAdminView() {
+function DocumentsAdminView({ docs, setDocs, loading, usingLiveData }) {
   const [tab, setTab] = useState("library");
-  const [docs, setDocs] = useState(DOCUMENTS_INIT);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [selectedDoc, setSelectedDoc] = useState(null);
@@ -134,20 +144,49 @@ function DocumentsAdminView() {
   function signDoc(id) {
     setDocs((arr) => arr.map((d) => (d.id === id ? { ...d, status: "Signed" } : d)));
     setSelectedDoc(null);
+    if (isSupabaseConfigured) {
+      supabase.from("documents").update({ status: "Signed" }).eq("id", id).then(({ error }) => {
+        if (error) console.warn("Could not persist signature:", error.message);
+      });
+    }
+  }
+
+  function createDocument(newRow) {
+    if (isSupabaseConfigured) {
+      supabase.from("documents").insert({
+        title: newRow.title, type: newRow.type, student: newRow.student, issued_date: newRow.issuedDate,
+        status: newRow.status, issued_by: newRow.issuedBy, signature_required: newRow.signatureRequired,
+      }).select().single().then(({ data: inserted, error }) => {
+        if (error) {
+          console.warn("Could not save document, keeping local only:", error.message);
+          setDocs((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+        } else {
+          setDocs((arr) => [normalizeDoc(inserted), ...arr]);
+        }
+      });
+    } else {
+      setDocs((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+    }
   }
 
   function addCertificate({ student, certType }) {
-    setDocs((arr) => [{ id: Date.now(), title: `${certType} — ${student}`, type: "Certificate", student, issuedDate: new Date().toISOString().slice(0, 10), status: "Pending Signature", issuedBy: "Mrs. Patience Mhike", signatureRequired: true }, ...arr]);
+    createDocument({ title: `${certType} — ${student}`, type: "Certificate", student, issuedDate: new Date().toISOString().slice(0, 10), status: "Pending Signature", issuedBy: "Mrs. Patience Mhike", signatureRequired: true });
     setCertModalOpen(false);
   }
 
   function addLetter({ recipient, template }) {
-    setDocs((arr) => [{ id: Date.now(), title: `${template} — ${recipient}`, type: "Letter", student: recipient, issuedDate: new Date().toISOString().slice(0, 10), status: "Draft", issuedBy: "Mrs. Patience Mhike", signatureRequired: true }, ...arr]);
+    createDocument({ title: `${template} — ${recipient}`, type: "Letter", student: recipient, issuedDate: new Date().toISOString().slice(0, 10), status: "Draft", issuedBy: "Mrs. Patience Mhike", signatureRequired: true });
     setLetterModalOpen(false);
   }
 
   return (
     <div>
+      {(loading || usingLiveData) && (
+        <div style={{ marginBottom: 16 }}>
+          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+          {usingLiveData && <Pill tone="green">Live data</Pill>}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
         <StatCard icon={FolderOpen} label="Total Documents" value={docs.length} tone="indigo" />
         <StatCard icon={Award} label="Certificates Issued" value={docs.filter((d) => d.type === "Certificate").length} tone="green" />
@@ -272,13 +311,27 @@ function DocumentsAdminView() {
 }
 
 /* ============================== TEACHER VIEW ============================== */
-function DocumentsTeacherView() {
+function DocumentsTeacherView({ docs, setDocs }) {
   const [letterModalOpen, setLetterModalOpen] = useState(false);
-  const [docs, setDocs] = useState(DOCUMENTS_INIT);
   const myDocs = docs.filter((d) => d.issuedBy === "Mrs. R. Chikore" || d.issuedBy === "Mr. T. Moyo");
 
   function addLetter({ recipient, template }) {
-    setDocs((arr) => [{ id: Date.now(), title: `${template} — ${recipient}`, type: "Letter", student: recipient, issuedDate: new Date().toISOString().slice(0, 10), status: "Draft", issuedBy: "Mr. T. Moyo", signatureRequired: true }, ...arr]);
+    const newRow = { title: `${template} — ${recipient}`, type: "Letter", student: recipient, issuedDate: new Date().toISOString().slice(0, 10), status: "Draft", issuedBy: "Mr. T. Moyo", signatureRequired: true };
+    if (isSupabaseConfigured) {
+      supabase.from("documents").insert({
+        title: newRow.title, type: newRow.type, student: newRow.student, issued_date: newRow.issuedDate,
+        status: newRow.status, issued_by: newRow.issuedBy, signature_required: newRow.signatureRequired,
+      }).select().single().then(({ data: inserted, error }) => {
+        if (error) {
+          console.warn("Could not save document, keeping local only:", error.message);
+          setDocs((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+        } else {
+          setDocs((arr) => [normalizeDoc(inserted), ...arr]);
+        }
+      });
+    } else {
+      setDocs((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+    }
     setLetterModalOpen(false);
   }
 
@@ -307,9 +360,9 @@ function DocumentsTeacherView() {
 }
 
 /* ============================== STUDENT / PARENT VIEW ============================== */
-function DocumentsPersonalView({ role }) {
+function DocumentsPersonalView({ role, docs }) {
   const studentName = "Tadiwa Mhofu";
-  const myDocs = DOCUMENTS_INIT.filter((d) => d.student === studentName && (d.status === "Issued" || d.status === "Signed"));
+  const myDocs = docs.filter((d) => d.student === studentName && (d.status === "Issued" || d.status === "Signed"));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -343,9 +396,30 @@ function DocumentsPersonalView({ role }) {
 /* ============================== ROOT (preview wrapper) ============================== */
 
 function DocumentsModule({ role }) {
-  if (role === "admin") return <DocumentsAdminView />;
-  if (role === "teacher") return <DocumentsTeacherView />;
-  return <DocumentsPersonalView role={role} />;
+  const [docs, setDocs] = useState(MOCK_DOCUMENTS);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase
+      .from("documents")
+      .select("*")
+      .order("issued_date", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Falling back to demo document data:", error.message);
+        } else if (data && data.length > 0) {
+          setDocs(data.map(normalizeDoc));
+          setUsingLiveData(true);
+        }
+        setLoading(false);
+      });
+  }, []);
+
+  if (role === "admin") return <DocumentsAdminView docs={docs} setDocs={setDocs} loading={loading} usingLiveData={usingLiveData} />;
+  if (role === "teacher") return <DocumentsTeacherView docs={docs} setDocs={setDocs} />;
+  return <DocumentsPersonalView role={role} docs={docs} />;
 }
 
 export { DocumentsModule };

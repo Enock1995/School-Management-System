@@ -30,7 +30,7 @@ const MOCK_BOARDERS = [
   { name: "Chiedza Goredema", cls: "Form 5A", house: "Msasa House", room: "M-08", guardian: "Mrs. T. Goredema", emergencyPhone: "+263 73 209 4456", admitted: "2023-01-09", status: "Active", dietary: "None" },
 ];
 
-const MEAL_PLAN = [
+const MOCK_MEAL_PLAN = [
   { day: "Monday", breakfast: "Porridge, eggs, fruit", lunch: "Sadza, beef stew, vegetables", dinner: "Rice, chicken curry, salad" },
   { day: "Tuesday", breakfast: "Bread, peanut butter, milk", lunch: "Pasta, beans, coleslaw", dinner: "Sadza, fish, greens" },
   { day: "Wednesday", breakfast: "Porridge, sausages", lunch: "Sadza, chicken, vegetables", dinner: "Rice, beef stir-fry" },
@@ -40,7 +40,7 @@ const MEAL_PLAN = [
   { day: "Sunday", breakfast: "Bread, eggs, milk", lunch: "Roast chicken, roast potatoes", dinner: "Light soup, bread rolls" },
 ];
 
-const HOSTEL_FEES = [
+const MOCK_HOSTEL_FEES = [
   { house: "Acacia House", boarders: 31, termFee: 420, collected: 11760, target: 13020 },
   { house: "Baobab House", boarders: 28, termFee: 420, collected: 10080, target: 11760 },
   { house: "Msasa House", boarders: 19, termFee: 380, collected: 7220, target: 7220 },
@@ -50,6 +50,11 @@ const HOSTEL_FEES = [
 // Supabase column is emergency_phone (snake_case); normalize to emergencyPhone for the UI.
 function normalizeBoarder(row) {
   return { ...row, emergencyPhone: row.emergencyPhone ?? row.emergency_phone };
+}
+
+// Supabase column is term_fee (snake_case); normalize to termFee for the UI.
+function normalizeHostelFee(row) {
+  return { ...row, termFee: row.termFee ?? row.term_fee };
 }
 
 /* ============================== ROOM DETAIL MODAL ============================== */
@@ -86,7 +91,7 @@ function RoomModal({ room, boarders, onClose }) {
 }
 
 /* ============================== ADMIN / HOSTEL MASTER VIEW ============================== */
-function HostelAdminView({ rooms, boarders }) {
+function HostelAdminView({ rooms, boarders, mealPlan, hostelFees }) {
   const [tab, setTab] = useState("rooms");
   const [houseFilter, setHouseFilter] = useState("All");
   const [query, setQuery] = useState("");
@@ -96,8 +101,8 @@ function HostelAdminView({ rooms, boarders }) {
   const filteredBoarders = boarders.filter((b) => (houseFilter === "All" || b.house === houseFilter) && b.name.toLowerCase().includes(query.toLowerCase()));
   const totalBeds = rooms.reduce((s, r) => s + r.capacity, 0);
   const totalOccupied = rooms.reduce((s, r) => s + r.occupants, 0);
-  const totalCollected = HOSTEL_FEES.reduce((s, h) => s + h.collected, 0);
-  const totalTarget = HOSTEL_FEES.reduce((s, h) => s + h.target, 0);
+  const totalCollected = hostelFees.reduce((s, h) => s + h.collected, 0);
+  const totalTarget = hostelFees.reduce((s, h) => s + h.target, 0);
 
   return (
     <div>
@@ -182,7 +187,7 @@ function HostelAdminView({ rooms, boarders }) {
                 </tr>
               </thead>
               <tbody>
-                {MEAL_PLAN.map((d) => (
+                {mealPlan.map((d) => (
                   <tr key={d.day}>
                     <td style={{ padding: "10px 12px", color: C.text, fontWeight: 600, borderBottom: `1px solid ${C.borderSoft}` }}>{d.day}</td>
                     <td style={{ padding: "10px 12px", color: C.textMuted, borderBottom: `1px solid ${C.borderSoft}` }}>{d.breakfast}</td>
@@ -209,7 +214,7 @@ function HostelAdminView({ rooms, boarders }) {
           <Card>
             <SectionHeader title="Collection by House" subtitle="This term (USD)" />
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={HOSTEL_FEES}>
+              <BarChart data={hostelFees}>
                 <CartesianGrid stroke={C.borderSoft} vertical={false} />
                 <XAxis dataKey="house" stroke={C.textFaint} fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis stroke={C.textFaint} fontSize={11} tickLine={false} axisLine={false} width={42} />
@@ -234,7 +239,7 @@ function HostelAdminView({ rooms, boarders }) {
                   </div>
                 ) },
               ]}
-              rows={HOSTEL_FEES}
+              rows={hostelFees}
             />
           </Card>
         </div>
@@ -246,12 +251,12 @@ function HostelAdminView({ rooms, boarders }) {
 }
 
 /* ============================== STUDENT / PARENT VIEW ============================== */
-function HostelPersonalView({ role, boarders }) {
+function HostelPersonalView({ role, boarders, mealPlan }) {
   const me = boarders[0]; // Tadiwa Mhofu, demo boarder
   const roommates = boarders.filter((b) => b.room === me.room && b.name !== me.name);
   const todayIndex = new Date().getDay(); // 0=Sun
   const dayMap = [6, 0, 1, 2, 3, 4, 5]; // map JS Sunday-first to our Monday-first array index
-  const today = MEAL_PLAN[dayMap[todayIndex]];
+  const today = mealPlan[dayMap[todayIndex]];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -318,6 +323,8 @@ function HostelPersonalView({ role, boarders }) {
 function HostelModule({ role }) {
   const [rooms, setRooms] = useState(MOCK_ROOMS);
   const [boarders, setBoarders] = useState(MOCK_BOARDERS);
+  const [mealPlan, setMealPlan] = useState(MOCK_MEAL_PLAN);
+  const [hostelFees, setHostelFees] = useState(MOCK_HOSTEL_FEES);
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [usingLiveData, setUsingLiveData] = useState(false);
 
@@ -326,7 +333,9 @@ function HostelModule({ role }) {
     Promise.all([
       supabase.from("rooms").select("*").order("id"),
       supabase.from("boarders").select("*").order("name"),
-    ]).then(([roomsRes, boardersRes]) => {
+      supabase.from("meal_plan").select("*").order("id"),
+      supabase.from("hostel_fees").select("*").order("house"),
+    ]).then(([roomsRes, boardersRes, mealPlanRes, hostelFeesRes]) => {
       if (roomsRes.error) {
         console.warn("Falling back to demo room data:", roomsRes.error.message);
       } else if (roomsRes.data && roomsRes.data.length > 0) {
@@ -337,6 +346,18 @@ function HostelModule({ role }) {
         console.warn("Falling back to demo boarder data:", boardersRes.error.message);
       } else if (boardersRes.data && boardersRes.data.length > 0) {
         setBoarders(boardersRes.data.map(normalizeBoarder));
+        setUsingLiveData(true);
+      }
+      if (mealPlanRes.error) {
+        console.warn("Falling back to demo meal plan data:", mealPlanRes.error.message);
+      } else if (mealPlanRes.data && mealPlanRes.data.length > 0) {
+        setMealPlan(mealPlanRes.data);
+        setUsingLiveData(true);
+      }
+      if (hostelFeesRes.error) {
+        console.warn("Falling back to demo hostel fee data:", hostelFeesRes.error.message);
+      } else if (hostelFeesRes.data && hostelFeesRes.data.length > 0) {
+        setHostelFees(hostelFeesRes.data.map(normalizeHostelFee));
         setUsingLiveData(true);
       }
       setLoading(false);
@@ -351,7 +372,11 @@ function HostelModule({ role }) {
           {usingLiveData && <Pill tone="green">Live data</Pill>}
         </div>
       )}
-      {role === "admin" ? <HostelAdminView rooms={rooms} boarders={boarders} /> : <HostelPersonalView role={role} boarders={boarders} />}
+      {role === "admin" ? (
+        <HostelAdminView rooms={rooms} boarders={boarders} mealPlan={mealPlan} hostelFees={hostelFees} />
+      ) : (
+        <HostelPersonalView role={role} boarders={boarders} mealPlan={mealPlan} />
+      )}
     </div>
   );
 }

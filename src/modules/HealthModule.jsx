@@ -15,7 +15,7 @@ const MOCK_CLINIC_VISITS = [
   { id: 5, student: "Maria Fernandez", cls: "Form 4A", date: "2026-06-12", reason: "Mild hives on arm", treatment: "Antihistamine given per care plan.", followUp: "Confirm allergen trigger with parent.", status: "Monitoring" },
 ];
 
-const MEDICAL_PROFILES = [
+const MOCK_PROFILES = [
   { name: "Tadiwa Mhofu", cls: "Form 4A", bloodType: "O+", allergies: "None known", chronic: "None", emergencyContact: "Mr. C. Mhofu · +263 77 412 9981" },
   { name: "Kudzai Nyamande", cls: "Form 2A", bloodType: "A+", allergies: "None known", chronic: "Asthma", emergencyContact: "Mr. P. Nyamande · +263 78 667 1290" },
   { name: "Maria Fernandez", cls: "Form 4A", bloodType: "B+", allergies: "Peanuts, shellfish", chronic: "None", emergencyContact: "Mr. A. Fernandez · +263 78 112 6654" },
@@ -23,12 +23,12 @@ const MEDICAL_PROFILES = [
   { name: "Brian Mutasa", cls: "Form 3A", bloodType: "O-", allergies: "Penicillin", chronic: "None", emergencyContact: "Mr. W. Mutasa · +263 77 334 8821" },
 ];
 
-const MEDICATIONS = [
+const MOCK_MEDICATIONS = [
   { student: "Kudzai Nyamande", medication: "Salbutamol Inhaler", dosage: "2 puffs", schedule: "As needed", lastGiven: "2026-06-10", administeredBy: "School Nurse" },
   { student: "Maria Fernandez", medication: "EpiPen (self-carried)", dosage: "1 dose if needed", schedule: "Emergency only", lastGiven: "—", administeredBy: "Self / Nurse" },
 ];
 
-const VACCINATIONS = [
+const MOCK_VACCINATIONS = [
   { student: "Tadiwa Mhofu", vaccine: "Tetanus Booster", dateGiven: "2024-02-10", nextDue: "2029-02-10", status: "Up to Date" },
   { student: "Kudzai Nyamande", vaccine: "MMR (Measles, Mumps, Rubella)", dateGiven: "2023-05-01", nextDue: "—", status: "Up to Date" },
   { student: "Brian Mutasa", vaccine: "Tetanus Booster", dateGiven: "2019-03-15", nextDue: "2024-03-15", status: "Overdue" },
@@ -45,6 +45,21 @@ const AI_HEALTH_ALERTS = [
 // Supabase column is follow_up (snake_case); normalize to followUp for the UI.
 function normalizeVisit(row) {
   return { ...row, followUp: row.followUp ?? row.follow_up };
+}
+
+// Supabase columns are blood_type, emergency_contact (snake_case); normalize for the UI.
+function normalizeProfile(row) {
+  return { ...row, bloodType: row.bloodType ?? row.blood_type, emergencyContact: row.emergencyContact ?? row.emergency_contact };
+}
+
+// Supabase columns are last_given, administered_by (snake_case); normalize for the UI.
+function normalizeMedication(row) {
+  return { ...row, lastGiven: row.lastGiven ?? row.last_given, administeredBy: row.administeredBy ?? row.administered_by };
+}
+
+// Supabase columns are date_given, next_due (snake_case); normalize for the UI.
+function normalizeVaccination(row) {
+  return { ...row, dateGiven: row.dateGiven ?? row.date_given, nextDue: row.nextDue ?? row.next_due };
 }
 
 /* ============================== VISIT DETAIL MODAL ============================== */
@@ -115,16 +130,16 @@ function NewVisitModal({ open, onClose, onSubmit, studentNames }) {
 }
 
 /* ============================== ADMIN / NURSE VIEW ============================== */
-function HealthAdminView({ visits, setVisits, loading, usingLiveData }) {
+function HealthAdminView({ visits, setVisits, profiles, medications, vaccinations, loading, usingLiveData }) {
   const [tab, setTab] = useState("visits");
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [newVisitOpen, setNewVisitOpen] = useState(false);
   const [query, setQuery] = useState("");
 
-  const studentNames = MEDICAL_PROFILES.map((p) => p.name);
+  const studentNames = profiles.map((p) => p.name);
   const monitoring = visits.filter((v) => v.status === "Monitoring").length;
-  const overdueVax = VACCINATIONS.filter((v) => v.status === "Overdue").length;
-  const filteredProfiles = MEDICAL_PROFILES.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
+  const overdueVax = vaccinations.filter((v) => v.status === "Overdue").length;
+  const filteredProfiles = profiles.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
 
   function resolveVisit(id) {
     setVisits((arr) => arr.map((v) => (v.id === id ? { ...v, status: "Resolved" } : v)));
@@ -137,7 +152,7 @@ function HealthAdminView({ visits, setVisits, loading, usingLiveData }) {
   }
 
   function addVisit(data) {
-    const profile = MEDICAL_PROFILES.find((p) => p.name === data.student);
+    const profile = profiles.find((p) => p.name === data.student);
     const newRow = { date: new Date().toISOString().slice(0, 10), cls: profile ? profile.cls : "—", treatment: "Pending assessment.", followUp: "To be determined.", status: "Monitoring", ...data };
     if (isSupabaseConfigured) {
       supabase.from("clinic_visits").insert({
@@ -168,7 +183,7 @@ function HealthAdminView({ visits, setVisits, loading, usingLiveData }) {
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
         <StatCard icon={ClipboardPlus} label="Clinic Visits (Term)" value={visits.length} tone="indigo" />
         <StatCard icon={HeartPulse} label="Currently Monitoring" value={monitoring} tone="amber" />
-        <StatCard icon={PillIcon} label="On Regular Medication" value={MEDICATIONS.length} tone="cyan" />
+        <StatCard icon={PillIcon} label="On Regular Medication" value={medications.length} tone="cyan" />
         <StatCard icon={Syringe} label="Overdue Vaccinations" value={overdueVax} tone="red" />
       </div>
 
@@ -233,7 +248,7 @@ function HealthAdminView({ visits, setVisits, loading, usingLiveData }) {
               { key: "lastGiven", label: "Last Given" },
               { key: "administeredBy", label: "Administered By" },
             ]}
-            rows={MEDICATIONS}
+            rows={medications}
           />
         </Card>
       )}
@@ -249,7 +264,7 @@ function HealthAdminView({ visits, setVisits, loading, usingLiveData }) {
               { key: "nextDue", label: "Next Due" },
               { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> },
             ]}
-            rows={VACCINATIONS}
+            rows={vaccinations}
           />
         </Card>
       )}
@@ -282,13 +297,13 @@ function HealthAdminView({ visits, setVisits, loading, usingLiveData }) {
 }
 
 /* ============================== TEACHER VIEW ============================== */
-function HealthTeacherView({ visits, setVisits }) {
+function HealthTeacherView({ visits, setVisits, profiles }) {
   const [newVisitOpen, setNewVisitOpen] = useState(false);
-  const studentNames = MEDICAL_PROFILES.map((p) => p.name);
+  const studentNames = profiles.map((p) => p.name);
   const myReferrals = visits.filter((v) => v.cls === "Form 4A" || v.cls === "Form 1A");
 
   function addVisit(data) {
-    const profile = MEDICAL_PROFILES.find((p) => p.name === data.student);
+    const profile = profiles.find((p) => p.name === data.student);
     const newRow = { date: new Date().toISOString().slice(0, 10), cls: profile ? profile.cls : "—", treatment: "Pending assessment.", followUp: "To be determined.", status: "Monitoring", ...data };
     if (isSupabaseConfigured) {
       supabase.from("clinic_visits").insert({
@@ -333,10 +348,10 @@ function HealthTeacherView({ visits, setVisits }) {
 }
 
 /* ============================== STUDENT / PARENT VIEW ============================== */
-function HealthPersonalView({ role, visits }) {
-  const me = MEDICAL_PROFILES[0]; // Tadiwa Mhofu, demo profile
+function HealthPersonalView({ role, visits, profiles, vaccinations }) {
+  const me = profiles[0]; // Tadiwa Mhofu, demo profile
   const myVisits = visits.filter((v) => v.student === me.name);
-  const myVax = VACCINATIONS.filter((v) => v.student === me.name);
+  const myVax = vaccinations.filter((v) => v.student === me.name);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -398,29 +413,51 @@ function HealthPersonalView({ role, visits }) {
 
 function HealthModule({ role }) {
   const [visits, setVisits] = useState(MOCK_CLINIC_VISITS);
+  const [profiles, setProfiles] = useState(MOCK_PROFILES);
+  const [medications, setMedications] = useState(MOCK_MEDICATIONS);
+  const [vaccinations, setVaccinations] = useState(MOCK_VACCINATIONS);
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [usingLiveData, setUsingLiveData] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
-    supabase
-      .from("clinic_visits")
-      .select("*")
-      .order("date", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn("Falling back to demo clinic visit data:", error.message);
-        } else if (data && data.length > 0) {
-          setVisits(data.map(normalizeVisit));
-          setUsingLiveData(true);
-        }
-        setLoading(false);
-      });
+    Promise.all([
+      supabase.from("clinic_visits").select("*").order("date", { ascending: false }),
+      supabase.from("medical_profiles").select("*").order("name"),
+      supabase.from("medications").select("*").order("student"),
+      supabase.from("vaccinations").select("*").order("student"),
+    ]).then(([visitsRes, profilesRes, medicationsRes, vaccinationsRes]) => {
+      if (visitsRes.error) {
+        console.warn("Falling back to demo clinic visit data:", visitsRes.error.message);
+      } else if (visitsRes.data && visitsRes.data.length > 0) {
+        setVisits(visitsRes.data.map(normalizeVisit));
+        setUsingLiveData(true);
+      }
+      if (profilesRes.error) {
+        console.warn("Falling back to demo medical profile data:", profilesRes.error.message);
+      } else if (profilesRes.data && profilesRes.data.length > 0) {
+        setProfiles(profilesRes.data.map(normalizeProfile));
+        setUsingLiveData(true);
+      }
+      if (medicationsRes.error) {
+        console.warn("Falling back to demo medication data:", medicationsRes.error.message);
+      } else if (medicationsRes.data && medicationsRes.data.length > 0) {
+        setMedications(medicationsRes.data.map(normalizeMedication));
+        setUsingLiveData(true);
+      }
+      if (vaccinationsRes.error) {
+        console.warn("Falling back to demo vaccination data:", vaccinationsRes.error.message);
+      } else if (vaccinationsRes.data && vaccinationsRes.data.length > 0) {
+        setVaccinations(vaccinationsRes.data.map(normalizeVaccination));
+        setUsingLiveData(true);
+      }
+      setLoading(false);
+    });
   }, []);
 
-  if (role === "admin") return <HealthAdminView visits={visits} setVisits={setVisits} loading={loading} usingLiveData={usingLiveData} />;
-  if (role === "teacher") return <HealthTeacherView visits={visits} setVisits={setVisits} />;
-  return <HealthPersonalView role={role} visits={visits} />;
+  if (role === "admin") return <HealthAdminView visits={visits} setVisits={setVisits} profiles={profiles} medications={medications} vaccinations={vaccinations} loading={loading} usingLiveData={usingLiveData} />;
+  if (role === "teacher") return <HealthTeacherView visits={visits} setVisits={setVisits} profiles={profiles} />;
+  return <HealthPersonalView role={role} visits={visits} profiles={profiles} vaccinations={vaccinations} />;
 }
 
 export { HealthModule };

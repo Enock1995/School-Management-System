@@ -1,15 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Phone, Plus, Search, Users, CalendarDays, MapPin, Award, Wallet,
-  Handshake, Mail
+  Handshake, Mail, Loader2
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip
 } from "recharts";
 import { C, fmtMoney, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, Avatar, Tag, Table, Modal, CustomTooltip, statusTone } from "../components/ui";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
-const ALUMNI = [
+const MOCK_ALUMNI = [
   { id: "AL-01", name: "Tendai Mutema", gradYear: 2015, profession: "Software Engineer", company: "Google", location: "London, UK", email: "t.mutema@alumni.springfield.edu", phone: "+44 20 7946 0011", donorStatus: "Donor" },
   { id: "AL-02", name: "Rumbidzai Chando", gradYear: 2012, profession: "Medical Doctor", company: "Parirenyatwa Hospital", location: "Harare, ZW", email: "r.chando@alumni.springfield.edu", phone: "+263 77 220 4471", donorStatus: "Donor" },
   { id: "AL-03", name: "James Coetzee", gradYear: 2018, profession: "Civil Engineer", company: "Group Five", location: "Johannesburg, SA", email: "j.coetzee@alumni.springfield.edu", phone: "+27 11 233 8800", donorStatus: "Non-donor" },
@@ -20,7 +21,7 @@ const ALUMNI = [
   { id: "AL-08", name: "Tatenda Gwese", gradYear: 2011, profession: "Pilot", company: "Fastjet", location: "Harare, ZW", email: "t.gwese@alumni.springfield.edu", phone: "+263 77 998 4432", donorStatus: "Donor" },
 ];
 
-const DONATIONS = [
+const MOCK_DONATIONS = [
   { alumnus: "Tendai Mutema", amount: 500, date: "2026-05-10", campaign: "Library Renovation Fund", method: "Bank Transfer" },
   { alumnus: "Farai Mhlanga", amount: 1200, date: "2026-04-22", campaign: "Scholarship Fund", method: "Bank Transfer" },
   { alumnus: "Blessing Chivero", amount: 750, date: "2026-06-01", campaign: "Scholarship Fund", method: "Stripe" },
@@ -28,27 +29,42 @@ const DONATIONS = [
   { alumnus: "Rumbidzai Chando", amount: 400, date: "2026-05-28", campaign: "Library Renovation Fund", method: "Paynow" },
 ];
 
-const DONATION_TREND = [
-  { month: "Jan", raised: 900 }, { month: "Feb", raised: 1100 }, { month: "Mar", raised: 1300 },
-  { month: "Apr", raised: 1700 }, { month: "May", raised: 1500 }, { month: "Jun", raised: 1850 },
-];
-
-const EVENTS = [
+const MOCK_EVENTS = [
   { title: "Class of 2015 — 10 Year Reunion", date: "2026-08-15", venue: "Springfield Main Hall", type: "Reunion", rsvp: 42, status: "Upcoming" },
   { title: "Alumni Networking Mixer — Harare", date: "2026-07-10", venue: "Meikles Hotel", type: "Networking", rsvp: 28, status: "Upcoming" },
   { title: "Annual Alumni Golf Day", date: "2026-05-03", venue: "Royal Harare Golf Club", type: "Fundraiser", rsvp: 36, status: "Completed" },
 ];
 
-const MENTORSHIP = [
+const MOCK_MENTORSHIP = [
   { mentor: "Tendai Mutema", field: "Software Engineer", student: "Tadiwa Mhofu", status: "Matched" },
   { mentor: "Rumbidzai Chando", field: "Medical Doctor", student: "Chiedza Goredema", status: "Matched" },
   { mentor: "Anesu Mapfumo", field: "Architect", student: "Tinotenda Chigumba", status: "Pending" },
 ];
 
+// Derives the monthly donations trend straight from live donation records, rather than
+// keeping a separate hardcoded chart dataset that could drift out of sync with the real numbers.
+function computeDonationTrend(donations) {
+  const byMonth = {};
+  donations.forEach((d) => {
+    const dateObj = new Date(d.date);
+    if (Number.isNaN(dateObj.getTime())) return;
+    const key = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
+    const label = dateObj.toLocaleDateString("en-US", { month: "short" });
+    if (!byMonth[key]) byMonth[key] = { label, total: 0 };
+    byMonth[key].total += Number(d.amount);
+  });
+  return Object.keys(byMonth).sort().map((key) => ({ month: byMonth[key].label, raised: byMonth[key].total }));
+}
+
+// Supabase columns are grad_year and donor_status (snake_case); normalize to camelCase for the UI.
+function normalizeAlumnus(row) {
+  return { ...row, gradYear: row.gradYear ?? row.grad_year, donorStatus: row.donorStatus ?? row.donor_status };
+}
+
 /* ============================== ALUMNI DETAIL MODAL ============================== */
-function AlumniModal({ alum, onClose }) {
+function AlumniModal({ alum, donations, onClose }) {
   if (!alum) return null;
-  const donations = DONATIONS.filter((d) => d.alumnus === alum.name);
+  const alumDonations = donations.filter((d) => d.alumnus === alum.name);
   return (
     <Modal open={!!alum} onClose={onClose} title={alum.name} wide>
       <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 18 }}>
@@ -70,8 +86,8 @@ function AlumniModal({ alum, onClose }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Phone size={13} color={C.textMuted} /><span style={{ fontSize: 13, color: C.text }}>{alum.phone}</span></div>
       </div>
       <div style={{ fontSize: 12, color: C.textFaint, textTransform: "uppercase", marginBottom: 10 }}>Donation History</div>
-      {donations.length > 0 ? (
-        <Table columns={[{ key: "campaign", label: "Campaign" }, { key: "amount", label: "Amount", render: (r) => fmtMoney(r.amount) }, { key: "date", label: "Date" }]} rows={donations} />
+      {alumDonations.length > 0 ? (
+        <Table columns={[{ key: "campaign", label: "Campaign" }, { key: "amount", label: "Amount", render: (r) => fmtMoney(r.amount) }, { key: "date", label: "Date" }]} rows={alumDonations} />
       ) : (
         <div style={{ fontSize: 13, color: C.textMuted }}>No donations on record yet.</div>
       )}
@@ -80,20 +96,27 @@ function AlumniModal({ alum, onClose }) {
 }
 
 /* ============================== ADMIN VIEW ============================== */
-function AlumniAdminView() {
+function AlumniAdminView({ alumni, donations, events, mentorship, loading, usingLiveData }) {
   const [tab, setTab] = useState("directory");
   const [query, setQuery] = useState("");
   const [selectedAlum, setSelectedAlum] = useState(null);
 
-  const filtered = ALUMNI.filter((a) => a.name.toLowerCase().includes(query.toLowerCase()));
-  const totalRaised = DONATIONS.reduce((s, d) => s + d.amount, 0);
-  const donorCount = ALUMNI.filter((a) => a.donorStatus === "Donor").length;
-  const upcomingEvents = EVENTS.filter((e) => e.status === "Upcoming").length;
+  const filtered = alumni.filter((a) => a.name.toLowerCase().includes(query.toLowerCase()));
+  const totalRaised = donations.reduce((s, d) => s + d.amount, 0);
+  const donorCount = alumni.filter((a) => a.donorStatus === "Donor").length;
+  const upcomingEvents = events.filter((e) => e.status === "Upcoming").length;
+  const donationTrend = computeDonationTrend(donations);
 
   return (
     <div>
+      {(loading || usingLiveData) && (
+        <div style={{ marginBottom: 16 }}>
+          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
+          {usingLiveData && <Pill tone="green">Live data</Pill>}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
-        <StatCard icon={Users} label="Total Alumni" value={ALUMNI.length} tone="indigo" />
+        <StatCard icon={Users} label="Total Alumni" value={alumni.length} tone="indigo" />
         <StatCard icon={Award} label="Active Donors" value={donorCount} tone="green" />
         <StatCard icon={Wallet} label="Raised This Year" value={fmtMoney(totalRaised)} tone="amber" />
         <StatCard icon={CalendarDays} label="Upcoming Events" value={upcomingEvents} tone="cyan" />
@@ -136,7 +159,7 @@ function AlumniAdminView() {
           <Card>
             <SectionHeader title="Donations Trend" subtitle="Monthly total raised (USD)" />
             <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={DONATION_TREND}>
+              <LineChart data={donationTrend}>
                 <CartesianGrid stroke={C.borderSoft} vertical={false} />
                 <XAxis dataKey="month" stroke={C.textFaint} fontSize={11.5} tickLine={false} axisLine={false} />
                 <YAxis stroke={C.textFaint} fontSize={11.5} tickLine={false} axisLine={false} width={42} />
@@ -155,7 +178,7 @@ function AlumniAdminView() {
                 { key: "date", label: "Date" },
                 { key: "method", label: "Method", render: (r) => <Pill tone="cyan">{r.method}</Pill> },
               ]}
-              rows={DONATIONS}
+              rows={donations}
             />
           </Card>
         </div>
@@ -177,7 +200,7 @@ function AlumniAdminView() {
               { key: "rsvp", label: "RSVPs", align: "center" },
               { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> },
             ]}
-            rows={EVENTS}
+            rows={events}
           />
         </Card>
       )}
@@ -196,18 +219,18 @@ function AlumniAdminView() {
               { key: "student", label: "Student" },
               { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> },
             ]}
-            rows={MENTORSHIP}
+            rows={mentorship}
           />
         </Card>
       )}
 
-      <AlumniModal alum={selectedAlum} onClose={() => setSelectedAlum(null)} />
+      <AlumniModal alum={selectedAlum} donations={donations} onClose={() => setSelectedAlum(null)} />
     </div>
   );
 }
 
 /* ============================== TEACHER (MENTORSHIP COORDINATOR) VIEW ============================== */
-function AlumniTeacherView() {
+function AlumniTeacherView({ mentorship, events }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Card>
@@ -223,22 +246,22 @@ function AlumniTeacherView() {
             { key: "student", label: "Student" },
             { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> },
           ]}
-          rows={MENTORSHIP}
+          rows={mentorship}
         />
       </Card>
       <Card>
         <SectionHeader title="Upcoming Alumni Events" subtitle="Worth sharing with interested students" />
-        <Table columns={[{ key: "title", label: "Event" }, { key: "date", label: "Date" }, { key: "venue", label: "Venue" }]} rows={EVENTS.filter((e) => e.status === "Upcoming")} />
+        <Table columns={[{ key: "title", label: "Event" }, { key: "date", label: "Date" }, { key: "venue", label: "Venue" }]} rows={events.filter((e) => e.status === "Upcoming")} />
       </Card>
     </div>
   );
 }
 
 /* ============================== STUDENT VIEW ============================== */
-function AlumniStudentView() {
+function AlumniStudentView({ alumni, mentorship, events }) {
   const studentName = "Tadiwa Mhofu";
-  const myMentor = MENTORSHIP.find((m) => m.student === studentName);
-  const mentorProfile = myMentor ? ALUMNI.find((a) => a.name === myMentor.mentor) : null;
+  const myMentor = mentorship.find((m) => m.student === studentName);
+  const mentorProfile = myMentor ? alumni.find((a) => a.name === myMentor.mentor) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -260,7 +283,7 @@ function AlumniStudentView() {
       <Card>
         <SectionHeader title="Alumni Spotlight" subtitle="Career paths from Springfield graduates" />
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {ALUMNI.slice(0, 4).map((a) => (
+          {alumni.slice(0, 4).map((a) => (
             <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar name={a.name} size={36} />
               <div>
@@ -273,7 +296,7 @@ function AlumniStudentView() {
       </Card>
       <Card>
         <SectionHeader title="Upcoming Alumni Events" />
-        <Table columns={[{ key: "title", label: "Event" }, { key: "date", label: "Date" }, { key: "venue", label: "Venue" }]} rows={EVENTS.filter((e) => e.status === "Upcoming")} />
+        <Table columns={[{ key: "title", label: "Event" }, { key: "date", label: "Date" }, { key: "venue", label: "Venue" }]} rows={events.filter((e) => e.status === "Upcoming")} />
       </Card>
     </div>
   );
@@ -282,9 +305,52 @@ function AlumniStudentView() {
 /* ============================== ROOT (preview wrapper) ============================== */
 
 function AlumniModule({ role }) {
-  if (role === "admin") return <AlumniAdminView />;
-  if (role === "teacher") return <AlumniTeacherView />;
-  return <AlumniStudentView />;
+  const [alumni, setAlumni] = useState(MOCK_ALUMNI);
+  const [donations, setDonations] = useState(MOCK_DONATIONS);
+  const [events, setEvents] = useState(MOCK_EVENTS);
+  const [mentorship, setMentorship] = useState(MOCK_MENTORSHIP);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [usingLiveData, setUsingLiveData] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    Promise.all([
+      supabase.from("alumni").select("*").order("grad_year", { ascending: false }),
+      supabase.from("donations").select("*").order("date", { ascending: false }),
+      supabase.from("events").select("*").order("date"),
+      supabase.from("mentorship").select("*").order("mentor"),
+    ]).then(([alumniRes, donationsRes, eventsRes, mentorshipRes]) => {
+      if (alumniRes.error) {
+        console.warn("Falling back to demo alumni data:", alumniRes.error.message);
+      } else if (alumniRes.data && alumniRes.data.length > 0) {
+        setAlumni(alumniRes.data.map(normalizeAlumnus));
+        setUsingLiveData(true);
+      }
+      if (donationsRes.error) {
+        console.warn("Falling back to demo donation data:", donationsRes.error.message);
+      } else if (donationsRes.data && donationsRes.data.length > 0) {
+        setDonations(donationsRes.data);
+        setUsingLiveData(true);
+      }
+      if (eventsRes.error) {
+        console.warn("Falling back to demo event data:", eventsRes.error.message);
+      } else if (eventsRes.data && eventsRes.data.length > 0) {
+        setEvents(eventsRes.data);
+        setUsingLiveData(true);
+      }
+      if (mentorshipRes.error) {
+        console.warn("Falling back to demo mentorship data:", mentorshipRes.error.message);
+      } else if (mentorshipRes.data && mentorshipRes.data.length > 0) {
+        setMentorship(mentorshipRes.data);
+        setUsingLiveData(true);
+      }
+      setLoading(false);
+    });
+  }, []);
+
+  if (role === "admin") return <AlumniAdminView alumni={alumni} donations={donations} events={events} mentorship={mentorship} loading={loading} usingLiveData={usingLiveData} />;
+  if (role === "teacher") return <AlumniTeacherView mentorship={mentorship} events={events} />;
+  return <AlumniStudentView alumni={alumni} mentorship={mentorship} events={events} />;
 }
 
 export { AlumniModule };
