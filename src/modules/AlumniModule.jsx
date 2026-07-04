@@ -30,19 +30,19 @@ const MOCK_DONATIONS = [
 ];
 
 const MOCK_EVENTS = [
-  { title: "Class of 2015 — 10 Year Reunion", date: "2026-08-15", venue: "Springfield Main Hall", type: "Reunion", rsvp: 42, status: "Upcoming" },
-  { title: "Alumni Networking Mixer — Harare", date: "2026-07-10", venue: "Meikles Hotel", type: "Networking", rsvp: 28, status: "Upcoming" },
-  { title: "Annual Alumni Golf Day", date: "2026-05-03", venue: "Royal Harare Golf Club", type: "Fundraiser", rsvp: 36, status: "Completed" },
+  { id: 1, title: "Class of 2015 — 10 Year Reunion", date: "2026-08-15", venue: "Springfield Main Hall", type: "Reunion", rsvp: 42, status: "Upcoming" },
+  { id: 2, title: "Alumni Networking Mixer — Harare", date: "2026-07-10", venue: "Meikles Hotel", type: "Networking", rsvp: 28, status: "Upcoming" },
+  { id: 3, title: "Annual Alumni Golf Day", date: "2026-05-03", venue: "Royal Harare Golf Club", type: "Fundraiser", rsvp: 36, status: "Completed" },
 ];
 
 const MOCK_MENTORSHIP = [
-  { mentor: "Tendai Mutema", field: "Software Engineer", student: "Tadiwa Mhofu", status: "Matched" },
-  { mentor: "Rumbidzai Chando", field: "Medical Doctor", student: "Chiedza Goredema", status: "Matched" },
-  { mentor: "Anesu Mapfumo", field: "Architect", student: "Tinotenda Chigumba", status: "Pending" },
+  { id: 1, mentor: "Tendai Mutema", field: "Software Engineer", student: "Tadiwa Mhofu", status: "Matched" },
+  { id: 2, mentor: "Rumbidzai Chando", field: "Medical Doctor", student: "Chiedza Goredema", status: "Matched" },
+  { id: 3, mentor: "Anesu Mapfumo", field: "Architect", student: "Tinotenda Chigumba", status: "Pending" },
 ];
 
-// Derives the monthly donations trend straight from live donation records, rather than
-// keeping a separate hardcoded chart dataset that could drift out of sync with the real numbers.
+const EVENT_TYPES = ["Reunion", "Networking", "Fundraiser", "Workshop", "Other"];
+
 function computeDonationTrend(donations) {
   const byMonth = {};
   donations.forEach((d) => {
@@ -56,10 +56,16 @@ function computeDonationTrend(donations) {
   return Object.keys(byMonth).sort().map((key) => ({ month: byMonth[key].label, raised: byMonth[key].total }));
 }
 
-// Supabase columns are grad_year and donor_status (snake_case); normalize to camelCase for the UI.
 function normalizeAlumnus(row) {
   return { ...row, gradYear: row.gradYear ?? row.grad_year, donorStatus: row.donorStatus ?? row.donor_status };
 }
+
+const EMPTY_ALUMNUS_FORM = { name: "", gradYear: new Date().getFullYear(), profession: "", company: "", location: "Harare, ZW", email: "", phone: "", donorStatus: "Non-donor" };
+const EMPTY_EVENT_FORM = { title: "", date: "", venue: "", type: "Reunion" };
+const EMPTY_MATCH_FORM = { mentor: "", field: "", student: "" };
+
+const fieldStyle = { width: "100%", background: "var(--surface2, #1e2235)", border: "1px solid var(--border, #2a3050)", borderRadius: 10, padding: "9px 12px", color: "var(--text, #e2e8f0)", fontSize: 13, boxSizing: "border-box" };
+const labelStyle = { fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", display: "block", marginBottom: 5 };
 
 /* ============================== ALUMNI DETAIL MODAL ============================== */
 function AlumniModal({ alum, donations, onClose }) {
@@ -96,16 +102,60 @@ function AlumniModal({ alum, donations, onClose }) {
 }
 
 /* ============================== ADMIN VIEW ============================== */
-function AlumniAdminView({ alumni, donations, events, mentorship, loading, usingLiveData }) {
+function AlumniAdminView({ alumni, donations, events, mentorship, loading, usingLiveData, onAlumnusAdded, onEventAdded, onMatchAdded }) {
   const [tab, setTab] = useState("directory");
   const [query, setQuery] = useState("");
   const [selectedAlum, setSelectedAlum] = useState(null);
 
+  const [addAlumOpen, setAddAlumOpen] = useState(false);
+  const [alumForm, setAlumForm] = useState(EMPTY_ALUMNUS_FORM);
+  const [savingAlum, setSavingAlum] = useState(false);
+
+  const [addEventOpen, setAddEventOpen] = useState(false);
+  const [eventForm, setEventForm] = useState(EMPTY_EVENT_FORM);
+  const [savingEvent, setSavingEvent] = useState(false);
+
+  const [addMatchOpen, setAddMatchOpen] = useState(false);
+  const [matchForm, setMatchForm] = useState({ ...EMPTY_MATCH_FORM, mentor: alumni[0]?.name || "" });
+  const [savingMatch, setSavingMatch] = useState(false);
+
   const filtered = alumni.filter((a) => a.name.toLowerCase().includes(query.toLowerCase()));
-  const totalRaised = donations.reduce((s, d) => s + d.amount, 0);
+  const totalRaised = donations.reduce((s, d) => s + Number(d.amount || 0), 0);
   const donorCount = alumni.filter((a) => a.donorStatus === "Donor").length;
   const upcomingEvents = events.filter((e) => e.status === "Upcoming").length;
   const donationTrend = computeDonationTrend(donations);
+
+  function submitAlum() {
+    if (!alumForm.name.trim() || !alumForm.profession.trim()) return;
+    setSavingAlum(true);
+    const newId = `AL-${String(alumni.length + 1).padStart(2, "0")}`;
+    onAlumnusAdded({ id: newId, ...alumForm, gradYear: Number(alumForm.gradYear) }, () => {
+      setSavingAlum(false); setAddAlumOpen(false); setAlumForm(EMPTY_ALUMNUS_FORM);
+    });
+  }
+
+  function submitEvent() {
+    if (!eventForm.title.trim() || !eventForm.date || !eventForm.venue.trim()) return;
+    setSavingEvent(true);
+    onEventAdded({ ...eventForm, rsvp: 0, status: "Upcoming" }, () => {
+      setSavingEvent(false); setAddEventOpen(false); setEventForm(EMPTY_EVENT_FORM);
+    });
+  }
+
+  function submitMatch() {
+    if (!matchForm.mentor || !matchForm.student.trim()) return;
+    setSavingMatch(true);
+    const mentor = alumni.find((a) => a.name === matchForm.mentor);
+    onMatchAdded({ ...matchForm, field: matchForm.field || mentor?.profession || "", status: "Pending" }, () => {
+      setSavingMatch(false); setAddMatchOpen(false); setMatchForm({ ...EMPTY_MATCH_FORM, mentor: alumni[0]?.name || "" });
+    });
+  }
+
+  // Auto-fill field from mentor's profession when mentor changes
+  function handleMentorChange(name) {
+    const mentor = alumni.find((a) => a.name === name);
+    setMatchForm((f) => ({ ...f, mentor: name, field: mentor?.profession || "" }));
+  }
 
   return (
     <div>
@@ -136,7 +186,7 @@ function AlumniAdminView({ alumni, donations, events, mentorship, loading, using
               <Search size={14} color={C.textFaint} />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search alumni…" style={{ background: "none", border: "none", outline: "none", color: C.text, fontSize: 13, flex: 1 }} />
             </div>
-            <button style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={() => setAddAlumOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               <Plus size={14} /> Add Alumnus
             </button>
           </div>
@@ -187,7 +237,7 @@ function AlumniAdminView({ alumni, donations, events, mentorship, loading, using
       {tab === "events" && (
         <Card>
           <SectionHeader title="Alumni Events" action={
-            <button style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={() => setAddEventOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               <Plus size={14} /> New Event
             </button>
           } />
@@ -208,7 +258,7 @@ function AlumniAdminView({ alumni, donations, events, mentorship, loading, using
       {tab === "mentorship" && (
         <Card>
           <SectionHeader title="Mentorship Program" subtitle="Connecting alumni with current students" action={
-            <button style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={() => { setMatchForm({ ...EMPTY_MATCH_FORM, mentor: alumni[0]?.name || "" }); setAddMatchOpen(true); }} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               <Handshake size={14} /> New Match
             </button>
           } />
@@ -225,17 +275,139 @@ function AlumniAdminView({ alumni, donations, events, mentorship, loading, using
       )}
 
       <AlumniModal alum={selectedAlum} donations={donations} onClose={() => setSelectedAlum(null)} />
+
+      {/* ---- Add Alumnus Modal ---- */}
+      <Modal open={addAlumOpen} onClose={() => { setAddAlumOpen(false); setAlumForm(EMPTY_ALUMNUS_FORM); }} title="Add Alumni Record">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 2 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Full Name</label>
+              <input placeholder="e.g. Chipo Nzou" value={alumForm.name} onChange={(e) => setAlumForm((f) => ({ ...f, name: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Class of (Year)</label>
+              <input type="number" min="1980" max="2026" value={alumForm.gradYear} onChange={(e) => setAlumForm((f) => ({ ...f, gradYear: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Profession</label>
+              <input placeholder="e.g. Civil Engineer" value={alumForm.profession} onChange={(e) => setAlumForm((f) => ({ ...f, profession: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Company / Organisation</label>
+              <input placeholder="e.g. Econet Wireless" value={alumForm.company} onChange={(e) => setAlumForm((f) => ({ ...f, company: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Location</label>
+              <input placeholder="e.g. Harare, ZW" value={alumForm.location} onChange={(e) => setAlumForm((f) => ({ ...f, location: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Donor Status</label>
+              <select value={alumForm.donorStatus} onChange={(e) => setAlumForm((f) => ({ ...f, donorStatus: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }}>
+                <option>Non-donor</option>
+                <option>Donor</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Email</label>
+              <input type="email" placeholder="alumni@springfield.edu" value={alumForm.email} onChange={(e) => setAlumForm((f) => ({ ...f, email: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Phone</label>
+              <input placeholder="+263 77 …" value={alumForm.phone} onChange={(e) => setAlumForm((f) => ({ ...f, phone: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+            </div>
+          </div>
+          <button onClick={submitAlum} disabled={savingAlum || !alumForm.name.trim() || !alumForm.profession.trim()} style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: savingAlum ? "not-allowed" : "pointer", opacity: savingAlum ? 0.7 : 1 }}>
+            {savingAlum ? <><Loader2 size={14} className="spin" /> Saving…</> : "Add Alumni Record"}
+          </button>
+        </div>
+      </Modal>
+
+      {/* ---- New Event Modal ---- */}
+      <Modal open={addEventOpen} onClose={() => { setAddEventOpen(false); setEventForm(EMPTY_EVENT_FORM); }} title="New Alumni Event">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ ...labelStyle, color: C.textFaint }}>Event Title</label>
+            <input placeholder="e.g. Class of 2020 Reunion" value={eventForm.title} onChange={(e) => setEventForm((f) => ({ ...f, title: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Type</label>
+              <select value={eventForm.type} onChange={(e) => setEventForm((f) => ({ ...f, type: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }}>
+                {EVENT_TYPES.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, color: C.textFaint }}>Date</label>
+              <input type="date" value={eventForm.date} onChange={(e) => setEventForm((f) => ({ ...f, date: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+            </div>
+          </div>
+          <div>
+            <label style={{ ...labelStyle, color: C.textFaint }}>Venue</label>
+            <input placeholder="e.g. Meikles Hotel, Harare" value={eventForm.venue} onChange={(e) => setEventForm((f) => ({ ...f, venue: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+          </div>
+          <button onClick={submitEvent} disabled={savingEvent || !eventForm.title.trim() || !eventForm.date || !eventForm.venue.trim()} style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: savingEvent ? "not-allowed" : "pointer", opacity: savingEvent ? 0.7 : 1 }}>
+            {savingEvent ? <><Loader2 size={14} className="spin" /> Saving…</> : "Create Event"}
+          </button>
+        </div>
+      </Modal>
+
+      {/* ---- New Match Modal ---- */}
+      <Modal open={addMatchOpen} onClose={() => { setAddMatchOpen(false); }} title="Propose Mentorship Match">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ ...labelStyle, color: C.textFaint }}>Alumni Mentor</label>
+            <select value={matchForm.mentor} onChange={(e) => handleMentorChange(e.target.value)} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }}>
+              {alumni.map((a) => <option key={a.id} value={a.name}>{a.name} — {a.profession}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ ...labelStyle, color: C.textFaint }}>Field / Expertise</label>
+            <input placeholder="Auto-filled from mentor, or override" value={matchForm.field} onChange={(e) => setMatchForm((f) => ({ ...f, field: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, color: C.textFaint }}>Student Name</label>
+            <input placeholder="e.g. Tadiwa Mhofu" value={matchForm.student} onChange={(e) => setMatchForm((f) => ({ ...f, student: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+          </div>
+          <button onClick={submitMatch} disabled={savingMatch || !matchForm.mentor || !matchForm.student.trim()} style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: savingMatch ? "not-allowed" : "pointer", opacity: savingMatch ? 0.7 : 1 }}>
+            {savingMatch ? <><Loader2 size={14} className="spin" /> Saving…</> : "Propose Match"}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 /* ============================== TEACHER (MENTORSHIP COORDINATOR) VIEW ============================== */
-function AlumniTeacherView({ mentorship, events }) {
+function AlumniTeacherView({ alumni, mentorship, events, onMatchAdded }) {
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [matchForm, setMatchForm] = useState({ ...EMPTY_MATCH_FORM, mentor: alumni[0]?.name || "" });
+  const [saving, setSaving] = useState(false);
+
+  function handleMentorChange(name) {
+    const mentor = alumni.find((a) => a.name === name);
+    setMatchForm((f) => ({ ...f, mentor: name, field: mentor?.profession || "" }));
+  }
+
+  function submitMatch() {
+    if (!matchForm.mentor || !matchForm.student.trim()) return;
+    setSaving(true);
+    const mentor = alumni.find((a) => a.name === matchForm.mentor);
+    onMatchAdded({ ...matchForm, field: matchForm.field || mentor?.profession || "", status: "Pending" }, () => {
+      setSaving(false); setProposeOpen(false); setMatchForm({ ...EMPTY_MATCH_FORM, mentor: alumni[0]?.name || "" });
+    });
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Card>
         <SectionHeader title="Mentorship Coordination" subtitle="Current alumni-to-student matches" action={
-          <button style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          <button onClick={() => setProposeOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
             <Handshake size={14} /> Propose Match
           </button>
         } />
@@ -253,6 +425,28 @@ function AlumniTeacherView({ mentorship, events }) {
         <SectionHeader title="Upcoming Alumni Events" subtitle="Worth sharing with interested students" />
         <Table columns={[{ key: "title", label: "Event" }, { key: "date", label: "Date" }, { key: "venue", label: "Venue" }]} rows={events.filter((e) => e.status === "Upcoming")} />
       </Card>
+
+      <Modal open={proposeOpen} onClose={() => { setProposeOpen(false); }} title="Propose Mentorship Match">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ ...labelStyle, color: C.textFaint }}>Alumni Mentor</label>
+            <select value={matchForm.mentor} onChange={(e) => handleMentorChange(e.target.value)} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }}>
+              {alumni.map((a) => <option key={a.id} value={a.name}>{a.name} — {a.profession}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ ...labelStyle, color: C.textFaint }}>Field / Expertise</label>
+            <input placeholder="Auto-filled from mentor" value={matchForm.field} onChange={(e) => setMatchForm((f) => ({ ...f, field: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, color: C.textFaint }}>Student Name</label>
+            <input placeholder="e.g. Tadiwa Mhofu" value={matchForm.student} onChange={(e) => setMatchForm((f) => ({ ...f, student: e.target.value }))} style={{ ...fieldStyle, background: C.surface2, border: `1px solid ${C.border}`, color: C.text }} />
+          </div>
+          <button onClick={submitMatch} disabled={saving || !matchForm.mentor || !matchForm.student.trim()} style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+            {saving ? <><Loader2 size={14} className="spin" /> Saving…</> : "Propose Match"}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -302,8 +496,7 @@ function AlumniStudentView({ alumni, mentorship, events }) {
   );
 }
 
-/* ============================== ROOT (preview wrapper) ============================== */
-
+/* ============================== ROOT ============================== */
 function AlumniModule({ role }) {
   const [alumni, setAlumni] = useState(MOCK_ALUMNI);
   const [donations, setDonations] = useState(MOCK_DONATIONS);
@@ -320,36 +513,67 @@ function AlumniModule({ role }) {
       supabase.from("events").select("*").order("date"),
       supabase.from("mentorship").select("*").order("mentor"),
     ]).then(([alumniRes, donationsRes, eventsRes, mentorshipRes]) => {
-      if (alumniRes.error) {
-        console.warn("Falling back to demo alumni data:", alumniRes.error.message);
-      } else if (alumniRes.data && alumniRes.data.length > 0) {
-        setAlumni(alumniRes.data.map(normalizeAlumnus));
-        setUsingLiveData(true);
-      }
-      if (donationsRes.error) {
-        console.warn("Falling back to demo donation data:", donationsRes.error.message);
-      } else if (donationsRes.data && donationsRes.data.length > 0) {
-        setDonations(donationsRes.data);
-        setUsingLiveData(true);
-      }
-      if (eventsRes.error) {
-        console.warn("Falling back to demo event data:", eventsRes.error.message);
-      } else if (eventsRes.data && eventsRes.data.length > 0) {
-        setEvents(eventsRes.data);
-        setUsingLiveData(true);
-      }
-      if (mentorshipRes.error) {
-        console.warn("Falling back to demo mentorship data:", mentorshipRes.error.message);
-      } else if (mentorshipRes.data && mentorshipRes.data.length > 0) {
-        setMentorship(mentorshipRes.data);
-        setUsingLiveData(true);
-      }
+      if (alumniRes.error) console.warn("Falling back to demo alumni data:", alumniRes.error.message);
+      else if (alumniRes.data && alumniRes.data.length > 0) { setAlumni(alumniRes.data.map(normalizeAlumnus)); setUsingLiveData(true); }
+
+      if (donationsRes.error) console.warn("Falling back to demo donation data:", donationsRes.error.message);
+      else if (donationsRes.data && donationsRes.data.length > 0) { setDonations(donationsRes.data); setUsingLiveData(true); }
+
+      if (eventsRes.error) console.warn("Falling back to demo event data:", eventsRes.error.message);
+      else if (eventsRes.data && eventsRes.data.length > 0) { setEvents(eventsRes.data); setUsingLiveData(true); }
+
+      if (mentorshipRes.error) console.warn("Falling back to demo mentorship data:", mentorshipRes.error.message);
+      else if (mentorshipRes.data && mentorshipRes.data.length > 0) { setMentorship(mentorshipRes.data); setUsingLiveData(true); }
+
       setLoading(false);
     });
   }, []);
 
-  if (role === "admin") return <AlumniAdminView alumni={alumni} donations={donations} events={events} mentorship={mentorship} loading={loading} usingLiveData={usingLiveData} />;
-  if (role === "teacher") return <AlumniTeacherView mentorship={mentorship} events={events} />;
+  function handleAlumnusAdded(row, done) {
+    const dbRow = { id: row.id, name: row.name, grad_year: row.gradYear, profession: row.profession, company: row.company, location: row.location, email: row.email, phone: row.phone, donor_status: row.donorStatus };
+    if (isSupabaseConfigured) {
+      supabase.from("alumni").insert(dbRow).select().single().then(({ data, error }) => {
+        if (error) console.warn("Could not save alumnus:", error.message);
+        else setUsingLiveData(true);
+        setAlumni((arr) => [normalizeAlumnus(data || row), ...arr]);
+        done();
+      });
+    } else {
+      setAlumni((arr) => [row, ...arr]);
+      done();
+    }
+  }
+
+  function handleEventAdded(row, done) {
+    if (isSupabaseConfigured) {
+      supabase.from("events").insert(row).select().single().then(({ data, error }) => {
+        if (error) console.warn("Could not save event:", error.message);
+        else setUsingLiveData(true);
+        setEvents((arr) => [...arr, data || row]);
+        done();
+      });
+    } else {
+      setEvents((arr) => [...arr, { ...row, id: Date.now() }]);
+      done();
+    }
+  }
+
+  function handleMatchAdded(row, done) {
+    if (isSupabaseConfigured) {
+      supabase.from("mentorship").insert(row).select().single().then(({ data, error }) => {
+        if (error) console.warn("Could not save mentorship match:", error.message);
+        else setUsingLiveData(true);
+        setMentorship((arr) => [...arr, data || row]);
+        done();
+      });
+    } else {
+      setMentorship((arr) => [...arr, { ...row, id: Date.now() }]);
+      done();
+    }
+  }
+
+  if (role === "admin") return <AlumniAdminView alumni={alumni} donations={donations} events={events} mentorship={mentorship} loading={loading} usingLiveData={usingLiveData} onAlumnusAdded={handleAlumnusAdded} onEventAdded={handleEventAdded} onMatchAdded={handleMatchAdded} />;
+  if (role === "teacher") return <AlumniTeacherView alumni={alumni} mentorship={mentorship} events={events} onMatchAdded={handleMatchAdded} />;
   return <AlumniStudentView alumni={alumni} mentorship={mentorship} events={events} />;
 }
 

@@ -13,6 +13,7 @@ import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 // Icons can't be stored in Postgres — teams/clubs store the icon's name as text,
 // and this map resolves that string back to the actual component for rendering.
 const ICON_MAP = { Trophy, Award, BookOpen, Swords, Drama, FlaskConical, Camera, Heart };
+const ICON_KEYS = Object.keys(ICON_MAP);
 
 const MOCK_TEAMS = [
   { id: "T1", name: "Football", category: "Boys", coach: "Mr. D. Banda", icon: "Trophy" },
@@ -22,7 +23,7 @@ const MOCK_TEAMS = [
   { id: "T5", name: "Basketball", category: "Boys", coach: "Mr. T. Moyo", icon: "Trophy" },
 ];
 
-const FIXTURES = [
+const MOCK_FIXTURES = [
   { id: 1, team: "Football", opponent: "St. George's College", date: "2026-06-27", venue: "Springfield Grounds", homeAway: "Home", status: "Upcoming", result: null },
   { id: 2, team: "Netball", opponent: "Dominican Convent", date: "2026-06-25", venue: "Dominican Convent", homeAway: "Away", status: "Upcoming", result: null },
   { id: 3, team: "Athletics", opponent: "Inter-School Athletics Meet", date: "2026-06-28", venue: "Harare Sports Club", homeAway: "Neutral", status: "Upcoming", result: null },
@@ -49,7 +50,7 @@ const MOCK_CLUBS = [
   { id: "C6", name: "Photography Club", category: "Creative", patron: "Mr. D. Banda", schedule: "Wednesdays 3:30 PM", members: 11, icon: "Camera" },
 ];
 
-const CLUB_MEMBERS = {
+const MOCK_CLUB_MEMBERS_MAP = {
   "Debate Club": ["Tinotenda Chigumba", "Chiedza Goredema", "Maria Fernandez", "Anesu Chitate"],
   "Chess Club": ["Tadiwa Mhofu", "Liam Osei", "Stephanie Mhike"],
   "Drama Society": ["Natasha Sibanda", "Rutendo Marecha", "Tapiwa Chirwa"],
@@ -65,10 +66,17 @@ const ACTIVITY_LOG = [
   { title: "Swimming team defeats Westridge High", group: "Swimming", date: "2026-06-08", summary: "A dominant performance across all age categories at the home gala." },
 ];
 
+function normalizeFixture(row) {
+  return { ...row, homeAway: row.homeAway ?? row.home_away };
+}
+
+const EMPTY_FIXTURE_FORM = { team: "", opponent: "", date: "", venue: "", homeAway: "Home" };
+const EMPTY_CLUB_FORM = { name: "", category: "Academic", patron: "", schedule: "", icon: "BookOpen" };
+
 /* ============================== CLUB DETAIL MODAL ============================== */
-function ClubModal({ club, onClose }) {
+function ClubModal({ club, clubMembersMap, onClose }) {
   if (!club) return null;
-  const members = CLUB_MEMBERS[club.name] || [];
+  const members = (clubMembersMap && clubMembersMap[club.name]) || [];
   return (
     <Modal open={!!club} onClose={onClose} title={club.name} wide>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
@@ -79,26 +87,65 @@ function ClubModal({ club, onClose }) {
       <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>Patron: <span style={{ color: C.text, fontWeight: 600 }}>{club.patron}</span></div>
       <div style={{ fontSize: 12, color: C.textFaint, textTransform: "uppercase", marginBottom: 10 }}>Members on Record</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {members.map((m) => (
+        {members.length > 0 ? members.map((m) => (
           <div key={m} style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Avatar name={m} size={28} />
             <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{m}</span>
           </div>
-        ))}
+        )) : <span style={{ fontSize: 13, color: C.textMuted }}>No members on record yet.</span>}
       </div>
     </Modal>
   );
 }
 
 /* ============================== ADMIN VIEW ============================== */
-function SportsAdminView({ teams, clubs, loading, usingLiveData }) {
+function SportsAdminView({ teams, clubs, fixtures, clubMembersMap, loading, usingLiveData, onFixtureAdded, onClubAdded }) {
   const [tab, setTab] = useState("fixtures");
   const [selectedClub, setSelectedClub] = useState(null);
 
-  const upcoming = FIXTURES.filter((f) => f.status === "Upcoming").length;
-  const wins = FIXTURES.filter((f) => f.result && f.result.startsWith("Won")).length;
+  const [newFixtureOpen, setNewFixtureOpen] = useState(false);
+  const [newFixtureForm, setNewFixtureForm] = useState({ ...EMPTY_FIXTURE_FORM, team: teams[0]?.name || "" });
+  const [savingFixture, setSavingFixture] = useState(false);
+
+  const [newClubOpen, setNewClubOpen] = useState(false);
+  const [newClubForm, setNewClubForm] = useState(EMPTY_CLUB_FORM);
+  const [savingClub, setSavingClub] = useState(false);
+
+  const upcoming = fixtures.filter((f) => f.status === "Upcoming").length;
+  const wins = fixtures.filter((f) => f.result && f.result.startsWith("Won")).length;
   const totalMembers = clubs.reduce((s, c) => s + c.members, 0);
   const membershipChart = clubs.map((c) => ({ name: c.name.split(" ")[0], members: c.members }));
+
+  const fieldStyle = {
+    width: "100%", background: C.surface2, border: `1px solid ${C.border}`,
+    borderRadius: 10, padding: "9px 12px", color: C.text, fontSize: 13,
+    boxSizing: "border-box",
+  };
+  const labelStyle = {
+    fontSize: 12, color: C.textFaint, fontWeight: 600,
+    textTransform: "uppercase", letterSpacing: "0.04em", display: "block", marginBottom: 5,
+  };
+
+  function submitFixture() {
+    if (!newFixtureForm.team || !newFixtureForm.opponent.trim() || !newFixtureForm.date) return;
+    setSavingFixture(true);
+    onFixtureAdded({ ...newFixtureForm, status: "Upcoming", result: null }, () => {
+      setSavingFixture(false);
+      setNewFixtureOpen(false);
+      setNewFixtureForm({ ...EMPTY_FIXTURE_FORM, team: teams[0]?.name || "" });
+    });
+  }
+
+  function submitClub() {
+    if (!newClubForm.name.trim() || !newClubForm.patron.trim()) return;
+    setSavingClub(true);
+    const newId = `C${clubs.length + 1}`;
+    onClubAdded({ id: newId, ...newClubForm, members: 0 }, () => {
+      setSavingClub(false);
+      setNewClubOpen(false);
+      setNewClubForm(EMPTY_CLUB_FORM);
+    });
+  }
 
   return (
     <div>
@@ -145,7 +192,7 @@ function SportsAdminView({ teams, clubs, loading, usingLiveData }) {
           </div>
           <Card>
             <SectionHeader title="Fixtures & Results" action={
-              <button style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              <button onClick={() => setNewFixtureOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                 <Plus size={14} /> Add Fixture
               </button>
             } />
@@ -158,7 +205,7 @@ function SportsAdminView({ teams, clubs, loading, usingLiveData }) {
                 { key: "result", label: "Result", render: (r) => r.result || <span style={{ color: C.textFaint }}>—</span> },
                 { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> },
               ]}
-              rows={FIXTURES}
+              rows={fixtures}
             />
           </Card>
         </div>
@@ -181,7 +228,7 @@ function SportsAdminView({ teams, clubs, loading, usingLiveData }) {
       {tab === "clubs" && (
         <Card>
           <SectionHeader title="Clubs & Societies" subtitle="Click a club to see its members" action={
-            <button style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={() => setNewClubOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               <Plus size={14} /> New Club
             </button>
           } />
@@ -231,25 +278,117 @@ function SportsAdminView({ teams, clubs, loading, usingLiveData }) {
         </div>
       )}
 
-      <ClubModal club={selectedClub} onClose={() => setSelectedClub(null)} />
+      <ClubModal club={selectedClub} clubMembersMap={clubMembersMap} onClose={() => setSelectedClub(null)} />
+
+      {/* ---- Add Fixture Modal ---- */}
+      <Modal open={newFixtureOpen} onClose={() => { setNewFixtureOpen(false); setNewFixtureForm({ ...EMPTY_FIXTURE_FORM, team: teams[0]?.name || "" }); }} title="Add New Fixture">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Team</label>
+              <select value={newFixtureForm.team} onChange={(e) => setNewFixtureForm((f) => ({ ...f, team: e.target.value }))} style={fieldStyle}>
+                {teams.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Home / Away</label>
+              <select value={newFixtureForm.homeAway} onChange={(e) => setNewFixtureForm((f) => ({ ...f, homeAway: e.target.value }))} style={fieldStyle}>
+                {["Home", "Away", "Neutral"].map((v) => <option key={v}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Opponent</label>
+            <input placeholder="e.g. St. George's College" value={newFixtureForm.opponent} onChange={(e) => setNewFixtureForm((f) => ({ ...f, opponent: e.target.value }))} style={fieldStyle} />
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Date</label>
+              <input type="date" value={newFixtureForm.date} onChange={(e) => setNewFixtureForm((f) => ({ ...f, date: e.target.value }))} style={fieldStyle} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Venue</label>
+              <input placeholder="e.g. Springfield Grounds" value={newFixtureForm.venue} onChange={(e) => setNewFixtureForm((f) => ({ ...f, venue: e.target.value }))} style={fieldStyle} />
+            </div>
+          </div>
+          <button onClick={submitFixture} disabled={savingFixture || !newFixtureForm.team || !newFixtureForm.opponent.trim() || !newFixtureForm.date} style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: savingFixture ? "not-allowed" : "pointer", opacity: savingFixture ? 0.7 : 1 }}>
+            {savingFixture ? <><Loader2 size={14} className="spin" /> Saving…</> : "Add Fixture"}
+          </button>
+        </div>
+      </Modal>
+
+      {/* ---- New Club Modal ---- */}
+      <Modal open={newClubOpen} onClose={() => { setNewClubOpen(false); setNewClubForm(EMPTY_CLUB_FORM); }} title="New Club or Society">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={labelStyle}>Club Name</label>
+            <input placeholder="e.g. Robotics Club" value={newClubForm.name} onChange={(e) => setNewClubForm((f) => ({ ...f, name: e.target.value }))} style={fieldStyle} />
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Category</label>
+              <select value={newClubForm.category} onChange={(e) => setNewClubForm((f) => ({ ...f, category: e.target.value }))} style={fieldStyle}>
+                {["Academic", "Creative", "Service", "Sports"].map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Icon</label>
+              <select value={newClubForm.icon} onChange={(e) => setNewClubForm((f) => ({ ...f, icon: e.target.value }))} style={fieldStyle}>
+                {ICON_KEYS.map((k) => <option key={k}>{k}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Patron</label>
+            <input placeholder="e.g. Mr. T. Moyo" value={newClubForm.patron} onChange={(e) => setNewClubForm((f) => ({ ...f, patron: e.target.value }))} style={fieldStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Meeting Schedule</label>
+            <input placeholder="e.g. Thursdays 3:30 PM" value={newClubForm.schedule} onChange={(e) => setNewClubForm((f) => ({ ...f, schedule: e.target.value }))} style={fieldStyle} />
+          </div>
+          <button onClick={submitClub} disabled={savingClub || !newClubForm.name.trim() || !newClubForm.patron.trim()} style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: savingClub ? "not-allowed" : "pointer", opacity: savingClub ? 0.7 : 1 }}>
+            {savingClub ? <><Loader2 size={14} className="spin" /> Saving…</> : "Create Club"}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 /* ============================== TEACHER (COACH / PATRON) VIEW ============================== */
-function SportsTeacherView({ teams, clubs }) {
+function SportsTeacherView({ teams, clubs, fixtures, onResultRecorded }) {
   const myTeam = teams.find((t) => t.coach === "Mr. T. Moyo");
   const myClub = clubs.find((c) => c.patron === "Mr. T. Moyo");
   const teamRoster = ATHLETES.filter((a) => a.team === (myTeam ? myTeam.name : ""));
-  const teamFixtures = FIXTURES.filter((f) => f.team === (myTeam ? myTeam.name : ""));
-  const clubMembers = myClub ? CLUB_MEMBERS[myClub.name] || [] : [];
+  const teamFixtures = fixtures.filter((f) => f.team === (myTeam ? myTeam.name : ""));
+  const upcomingFixtures = teamFixtures.filter((f) => f.status === "Upcoming");
+
+  const [recordOpen, setRecordOpen] = useState(false);
+  const [selectedFixtureId, setSelectedFixtureId] = useState(upcomingFixtures[0]?.id ?? null);
+  const [resultText, setResultText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const fieldStyle = { width: "100%", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px", color: C.text, fontSize: 13, boxSizing: "border-box" };
+  const labelStyle = { fontSize: 12, color: C.textFaint, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", display: "block", marginBottom: 5 };
+
+  function submitResult() {
+    if (!selectedFixtureId || !resultText.trim()) return;
+    setSaving(true);
+    onResultRecorded(selectedFixtureId, resultText.trim(), () => {
+      setSaving(false);
+      setRecordOpen(false);
+      setResultText("");
+    });
+  }
+
+  const clubMembersPlaceholder = myClub ? (MOCK_CLUB_MEMBERS_MAP[myClub.name] || []) : [];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {myTeam && (
         <Card>
           <SectionHeader title={`My Team — ${myTeam.name}`} subtitle={`${myTeam.category} · ${teamRoster.length} players`} action={
-            <button style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={() => { setSelectedFixtureId(upcomingFixtures[0]?.id ?? null); setRecordOpen(true); }} disabled={upcomingFixtures.length === 0} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: upcomingFixtures.length === 0 ? "not-allowed" : "pointer", opacity: upcomingFixtures.length === 0 ? 0.5 : 1 }}>
               <Plus size={14} /> Record Result
             </button>
           } />
@@ -268,7 +407,7 @@ function SportsTeacherView({ teams, clubs }) {
             </button>
           } />
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {clubMembers.map((m) => (
+            {clubMembersPlaceholder.map((m) => (
               <div key={m} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <Avatar name={m} size={28} />
                 <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{m}</span>
@@ -277,16 +416,41 @@ function SportsTeacherView({ teams, clubs }) {
           </div>
         </Card>
       )}
+
+      {/* ---- Record Result Modal ---- */}
+      <Modal open={recordOpen} onClose={() => { setRecordOpen(false); setResultText(""); }} title="Record Match Result">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {upcomingFixtures.length === 0 ? (
+            <p style={{ fontSize: 13, color: C.textMuted }}>No upcoming fixtures to record results for.</p>
+          ) : (
+            <>
+              <div>
+                <label style={labelStyle}>Fixture</label>
+                <select value={selectedFixtureId ?? ""} onChange={(e) => setSelectedFixtureId(Number(e.target.value))} style={fieldStyle}>
+                  {upcomingFixtures.map((f) => <option key={f.id} value={f.id}>{f.opponent} — {f.date}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Result</label>
+                <input placeholder='e.g. "Won 2–1" or "Lost 0–3"' value={resultText} onChange={(e) => setResultText(e.target.value)} style={fieldStyle} />
+              </div>
+              <button onClick={submitResult} disabled={saving || !resultText.trim()} style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+                {saving ? <><Loader2 size={14} className="spin" /> Saving…</> : "Save Result"}
+              </button>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
 
 /* ============================== STUDENT / PARENT VIEW ============================== */
-function SportsPersonalView({ role, clubs }) {
+function SportsPersonalView({ role, clubs, fixtures, clubMembersMap }) {
   const studentName = "Tadiwa Mhofu";
   const myTeams = ATHLETES.filter((a) => a.name === studentName);
-  const myClubs = Object.entries(CLUB_MEMBERS).filter(([, members]) => members.includes(studentName)).map(([name]) => clubs.find((c) => c.name === name));
-  const myFixtures = FIXTURES.filter((f) => myTeams.some((t) => t.team === f.team) && f.status === "Upcoming");
+  const myClubs = Object.entries(clubMembersMap).filter(([, members]) => members.includes(studentName)).map(([name]) => clubs.find((c) => c.name === name));
+  const myFixtures = fixtures.filter((f) => myTeams.some((t) => t.team === f.team) && f.status === "Upcoming");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -324,11 +488,12 @@ function SportsPersonalView({ role, clubs }) {
   );
 }
 
-/* ============================== ROOT (preview wrapper) ============================== */
-
+/* ============================== ROOT ============================== */
 function SportsModule({ role }) {
   const [teams, setTeams] = useState(MOCK_TEAMS);
   const [clubs, setClubs] = useState(MOCK_CLUBS);
+  const [fixtures, setFixtures] = useState(MOCK_FIXTURES);
+  const [clubMembersMap, setClubMembersMap] = useState(MOCK_CLUB_MEMBERS_MAP);
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [usingLiveData, setUsingLiveData] = useState(false);
 
@@ -337,26 +502,81 @@ function SportsModule({ role }) {
     Promise.all([
       supabase.from("teams").select("*").order("id"),
       supabase.from("clubs").select("*").order("id"),
-    ]).then(([teamsRes, clubsRes]) => {
-      if (teamsRes.error) {
-        console.warn("Falling back to demo team data:", teamsRes.error.message);
-      } else if (teamsRes.data && teamsRes.data.length > 0) {
-        setTeams(teamsRes.data);
+      supabase.from("fixtures").select("*").order("date"),
+      supabase.from("club_members").select("*"),
+    ]).then(([teamsRes, clubsRes, fixturesRes, membersRes]) => {
+      if (teamsRes.error) console.warn("Falling back to demo team data:", teamsRes.error.message);
+      else if (teamsRes.data && teamsRes.data.length > 0) { setTeams(teamsRes.data); setUsingLiveData(true); }
+
+      if (clubsRes.error) console.warn("Falling back to demo club data:", clubsRes.error.message);
+      else if (clubsRes.data && clubsRes.data.length > 0) { setClubs(clubsRes.data); setUsingLiveData(true); }
+
+      if (fixturesRes.error) console.warn("Falling back to demo fixture data:", fixturesRes.error.message);
+      else if (fixturesRes.data && fixturesRes.data.length > 0) {
+        setFixtures(fixturesRes.data.map(normalizeFixture));
         setUsingLiveData(true);
       }
-      if (clubsRes.error) {
-        console.warn("Falling back to demo club data:", clubsRes.error.message);
-      } else if (clubsRes.data && clubsRes.data.length > 0) {
-        setClubs(clubsRes.data);
+
+      if (membersRes.error) console.warn("Falling back to demo club members:", membersRes.error.message);
+      else if (membersRes.data && membersRes.data.length > 0) {
+        const map = {};
+        membersRes.data.forEach(({ club_name, student_name }) => {
+          if (!map[club_name]) map[club_name] = [];
+          map[club_name].push(student_name);
+        });
+        setClubMembersMap(map);
         setUsingLiveData(true);
       }
+
       setLoading(false);
     });
   }, []);
 
-  if (role === "admin") return <SportsAdminView teams={teams} clubs={clubs} loading={loading} usingLiveData={usingLiveData} />;
-  if (role === "teacher") return <SportsTeacherView teams={teams} clubs={clubs} />;
-  return <SportsPersonalView role={role} clubs={clubs} />;
+  function handleFixtureAdded(row, done) {
+    const dbRow = { team: row.team, opponent: row.opponent, date: row.date, venue: row.venue, home_away: row.homeAway, status: row.status, result: null };
+    if (isSupabaseConfigured) {
+      supabase.from("fixtures").insert(dbRow).select().single().then(({ data, error }) => {
+        if (error) console.warn("Could not save fixture:", error.message);
+        else setUsingLiveData(true);
+        setFixtures((arr) => [normalizeFixture(data || { ...dbRow, homeAway: row.homeAway }), ...arr]);
+        done();
+      });
+    } else {
+      setFixtures((arr) => [{ ...row, id: Date.now() }, ...arr]);
+      done();
+    }
+  }
+
+  function handleClubAdded(row, done) {
+    if (isSupabaseConfigured) {
+      supabase.from("clubs").insert(row).select().single().then(({ data, error }) => {
+        if (error) console.warn("Could not save club:", error.message);
+        else setUsingLiveData(true);
+        setClubs((arr) => [...arr, data || row]);
+        done();
+      });
+    } else {
+      setClubs((arr) => [...arr, row]);
+      done();
+    }
+  }
+
+  function handleResultRecorded(fixtureId, result, done) {
+    setFixtures((arr) => arr.map((f) => f.id === fixtureId ? { ...f, result, status: "Completed" } : f));
+    if (isSupabaseConfigured) {
+      supabase.from("fixtures").update({ result, status: "Completed" }).eq("id", fixtureId).then(({ error }) => {
+        if (error) console.warn("Could not save result:", error.message);
+        else setUsingLiveData(true);
+        done();
+      });
+    } else {
+      done();
+    }
+  }
+
+  if (role === "admin") return <SportsAdminView teams={teams} clubs={clubs} fixtures={fixtures} clubMembersMap={clubMembersMap} loading={loading} usingLiveData={usingLiveData} onFixtureAdded={handleFixtureAdded} onClubAdded={handleClubAdded} />;
+  if (role === "teacher") return <SportsTeacherView teams={teams} clubs={clubs} fixtures={fixtures} onResultRecorded={handleResultRecorded} />;
+  return <SportsPersonalView role={role} clubs={clubs} fixtures={fixtures} clubMembersMap={clubMembersMap} />;
 }
 
 export { SportsModule };
