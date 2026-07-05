@@ -1,52 +1,36 @@
 import React, { useState, useEffect } from "react";
 import {
-  FileText, Award, Mail, FolderOpen, Search, Plus, PenTool, Clock,
-  Download, FileCheck2, Send, Loader2
+  FileText, Award, Mail, Search, Plus, PenTool,
+  Download, Send, Loader2, Trash2, FolderOpen
 } from "lucide-react";
 import { C, displayFont } from "../lib/theme";
-import { Pill, Card, SectionHeader, StatCard, Avatar, Tag, Table, Modal, statusTone } from "../components/ui";
+import { Pill, Card, SectionHeader, StatCard, Table, Modal, Tag, statusTone } from "../components/ui";
 import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
-const STUDENT_NAMES = ["Tadiwa Mhofu", "Anesu Chitate", "Liam Osei", "Rutendo Marecha", "Brian Mutasa", "Chiedza Goredema", "Natasha Sibanda", "Tinotenda Chigumba", "Maria Fernandez"];
-
-const MOCK_DOCUMENTS = [
-  { id: 1, title: "Certificate of Academic Excellence — Term 1 2026", type: "Certificate", student: "Natasha Sibanda", issuedDate: "2026-04-10", status: "Issued", issuedBy: "Mrs. Patience Mhike", signatureRequired: true },
-  { id: 2, title: "Admission Confirmation Letter", type: "Letter", student: "Joseph Mangwana", issuedDate: "2026-06-05", status: "Signed", issuedBy: "Mrs. Patience Mhike", signatureRequired: true },
-  { id: 3, title: "Fee Clearance Letter", type: "Letter", student: "Tadiwa Mhofu", issuedDate: "2026-06-15", status: "Pending Signature", issuedBy: "Ms. Lisa Marufu", signatureRequired: true },
-  { id: 4, title: "Mid-Term Report Card — Form 4A", type: "Report", student: "Tadiwa Mhofu", issuedDate: "2026-06-20", status: "Issued", issuedBy: "Mr. T. Moyo", signatureRequired: false },
-  { id: 5, title: "Recommendation Letter — University Application", type: "Letter", student: "Tinotenda Chigumba", issuedDate: "2026-06-18", status: "Draft", issuedBy: "Mrs. R. Chikore", signatureRequired: true },
-  { id: 6, title: "Certificate of Sports Achievement — Football", type: "Certificate", student: "Tinotenda Chigumba", issuedDate: "2026-06-14", status: "Issued", issuedBy: "Mr. D. Banda", signatureRequired: true },
-  { id: 7, title: "Transfer Letter", type: "Letter", student: "—", issuedDate: "2026-05-20", status: "Draft", issuedBy: "Mrs. Patience Mhike", signatureRequired: true },
-  { id: 8, title: "School Leaving Certificate", type: "Certificate", student: "—", issuedDate: "2026-01-15", status: "Signed", issuedBy: "Mrs. Patience Mhike", signatureRequired: true },
+const DOC_TYPES         = ["Certificate", "Letter", "Report", "Notice"];
+const CERTIFICATE_TYPES = ["Certificate of Completion","Certificate of Merit","Academic Excellence Award","Sports Achievement Certificate","School Leaving Certificate"];
+const LETTER_TEMPLATES  = ["Admission Confirmation","Recommendation Letter","Transfer Letter","Fee Clearance Letter","Disciplinary Notice"];
+const SIGNED_AUDIT_LOG  = [
+  { document: "Admission Confirmation Letter", signedBy: "Mrs. Patience Mhike", date: "2026-06-06" },
+  { document: "School Leaving Certificate",    signedBy: "Mrs. Patience Mhike", date: "2026-01-16" },
+  { document: "Certificate of Academic Excellence", signedBy: "Mrs. Patience Mhike", date: "2026-04-11" },
 ];
 
-const CERTIFICATE_TYPES = ["Certificate of Completion", "Certificate of Merit", "Academic Excellence Award", "Sports Achievement Certificate", "School Leaving Certificate"];
-
-const LETTER_TEMPLATES = [
-  { id: "LT1", name: "Admission Confirmation", description: "Confirms a student's offer of admission for a given term and class." },
-  { id: "LT2", name: "Recommendation Letter", description: "General-purpose reference letter for university or scholarship applications." },
-  { id: "LT3", name: "Transfer Letter", description: "Issued when a student transfers to another institution." },
-  { id: "LT4", name: "Fee Clearance Letter", description: "Confirms a student's fee account is fully settled." },
-  { id: "LT5", name: "Disciplinary Notice", description: "Formal notice sent to parents regarding a disciplinary matter." },
-];
-
-const SIGNED_AUDIT_LOG = [
-  { document: "Admission Confirmation Letter — Joseph Mangwana", signedBy: "Mrs. Patience Mhike", date: "2026-06-06" },
-  { document: "School Leaving Certificate — Grace Mupanduki", signedBy: "Mrs. Patience Mhike", date: "2026-01-16" },
-  { document: "Certificate of Academic Excellence — Natasha Sibanda", signedBy: "Mrs. Patience Mhike", date: "2026-04-11" },
-];
-
-// Supabase columns are issued_date, issued_by, signature_required (snake_case); normalize for the UI.
-function normalizeDoc(row) {
-  return {
-    ...row,
-    issuedDate: row.issuedDate ?? row.issued_date,
-    issuedBy: row.issuedBy ?? row.issued_by,
-    signatureRequired: row.signatureRequired ?? row.signature_required,
-  };
+function normalizeDoc(r) {
+  return { ...r, issuedDate: r.issuedDate ?? r.issued_date, issuedBy: r.issuedBy ?? r.issued_by, signatureRequired: r.signatureRequired ?? r.signature_required };
 }
 
-/* ============================== DOCUMENT PREVIEW MODAL ============================== */
+function EmptyState({ message, hint }) {
+  return (
+    <div style={{ textAlign: "center", padding: "44px 20px" }}>
+      <FolderOpen size={36} color={C.border} style={{ marginBottom: 12 }} />
+      <div style={{ fontSize: 14, color: C.textMuted, fontWeight: 600 }}>{message}</div>
+      {hint && <div style={{ fontSize: 12.5, color: C.textFaint, marginTop: 6 }}>{hint}</div>}
+    </div>
+  );
+}
+
+/* ── Document preview modal ── */
 function DocumentModal({ doc, onSign, onClose, canSign }) {
   if (!doc) return null;
   return (
@@ -60,17 +44,17 @@ function DocumentModal({ doc, onSign, onClose, canSign }) {
         {[["Type", doc.type], ["Issued Date", doc.issuedDate], ["Issued By", doc.issuedBy], ["Signature Required", doc.signatureRequired ? "Yes" : "No"]].map(([k, v]) => (
           <div key={k}>
             <div style={{ fontSize: 11, color: C.textFaint, textTransform: "uppercase" }}>{k}</div>
-            <div style={{ fontSize: 13.5, color: C.text, fontWeight: 600, marginTop: 3 }}>{v}</div>
+            <div style={{ fontSize: 13.5, color: C.text, fontWeight: 600, marginTop: 3 }}>{String(v)}</div>
           </div>
         ))}
       </div>
       <div style={{ marginBottom: 18 }}><Pill tone={statusTone(doc.status)}>{doc.status}</Pill></div>
       <div style={{ display: "flex", gap: 10 }}>
-        <button style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigoSoft, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 10, padding: "11px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+        <button style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigoSoft, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 10, padding: 11, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
           <Download size={15} /> Download PDF
         </button>
         {doc.status === "Pending Signature" && canSign && (
-          <button onClick={() => onSign(doc.id)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+          <button onClick={() => onSign(doc.id)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 11, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
             <PenTool size={15} /> Sign Document
           </button>
         )}
@@ -79,302 +63,233 @@ function DocumentModal({ doc, onSign, onClose, canSign }) {
   );
 }
 
-function GenerateCertModal({ open, onClose, onSubmit }) {
-  const [student, setStudent] = useState(STUDENT_NAMES[0]);
-  const [certType, setCertType] = useState(CERTIFICATE_TYPES[0]);
-  return (
-    <Modal open={open} onClose={onClose} title="Generate Certificate">
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div>
-          <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 6, textTransform: "uppercase" }}>Student</div>
-          <select value={student} onChange={(e) => setStudent(e.target.value)} style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px", color: C.text, fontSize: 13.5 }}>
-            {STUDENT_NAMES.map((n) => <option key={n}>{n}</option>)}
-          </select>
-        </div>
-        <div>
-          <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 6, textTransform: "uppercase" }}>Certificate Type</div>
-          <select value={certType} onChange={(e) => setCertType(e.target.value)} style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px", color: C.text, fontSize: 13.5 }}>
-            {CERTIFICATE_TYPES.map((c) => <option key={c}>{c}</option>)}
-          </select>
-        </div>
-        <button onClick={() => onSubmit({ student, certType })} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-          <Award size={15} /> Generate Certificate
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-function ComposeLetterModal({ open, onClose, onSubmit }) {
-  const [recipient, setRecipient] = useState("");
-  const [template, setTemplate] = useState(LETTER_TEMPLATES[0].name);
-  return (
-    <Modal open={open} onClose={onClose} title="Compose Letter">
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div>
-          <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 6, textTransform: "uppercase" }}>Recipient / Student</div>
-          <input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="e.g. Tadiwa Mhofu" style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px", color: C.text, fontSize: 13.5 }} />
-        </div>
-        <div>
-          <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 6, textTransform: "uppercase" }}>Template</div>
-          <select value={template} onChange={(e) => setTemplate(e.target.value)} style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px", color: C.text, fontSize: 13.5 }}>
-            {LETTER_TEMPLATES.map((t) => <option key={t.id}>{t.name}</option>)}
-          </select>
-        </div>
-        <button onClick={() => recipient.trim() && onSubmit({ recipient, template })} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-          <Send size={15} /> Generate Letter (Draft)
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-/* ============================== ADMIN VIEW ============================== */
-function DocumentsAdminView({ docs, setDocs, loading, usingLiveData }) {
-  const [tab, setTab] = useState("library");
-  const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState("All");
+/* ── Admin view ── */
+function DocumentsAdminView({ docs, setDocs, loading }) {
+  const [tab, setTab]             = useState("all");
+  const [query, setQuery]         = useState("");
   const [selectedDoc, setSelectedDoc] = useState(null);
-  const [certModalOpen, setCertModalOpen] = useState(false);
-  const [letterModalOpen, setLetterModalOpen] = useState(false);
+  const [certOpen, setCertOpen]   = useState(false);
+  const [letterOpen, setLetterOpen] = useState(false);
+  const [certForm, setCertForm]   = useState({ student: "", certType: CERTIFICATE_TYPES[0] });
+  const [letterForm, setLetterForm] = useState({ recipient: "", template: LETTER_TEMPLATES[0] });
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting, setDeleting]   = useState(false);
 
-  const filtered = docs.filter((d) => (typeFilter === "All" || d.type === typeFilter) && d.title.toLowerCase().includes(query.toLowerCase()));
-  const pendingSignatures = docs.filter((d) => d.status === "Pending Signature");
+  const F = { width: "100%", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px", color: C.text, fontSize: 13, boxSizing: "border-box" };
+  const L = { fontSize: 12, color: C.textFaint, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", display: "block", marginBottom: 5 };
+  const iconBtn = (color) => ({ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", color });
+
+  const filtered = docs.filter((d) => {
+    const matchTab = tab === "all" || d.type === tab.charAt(0).toUpperCase() + tab.slice(1);
+    const matchQ   = d.title.toLowerCase().includes(query.toLowerCase()) || d.student.toLowerCase().includes(query.toLowerCase());
+    return matchTab && matchQ;
+  });
 
   function signDoc(id) {
-    setDocs((arr) => arr.map((d) => (d.id === id ? { ...d, status: "Signed" } : d)));
+    setDocs((arr) => arr.map((d) => d.id === id ? { ...d, status: "Signed" } : d));
     setSelectedDoc(null);
-    if (isSupabaseConfigured) {
-      supabase.from("documents").update({ status: "Signed" }).eq("id", id).then(({ error }) => {
-        if (error) console.warn("Could not persist signature:", error.message);
-      });
-    }
+    if (!isSupabaseConfigured) return;
+    supabase.from("documents").update({ status: "Signed" }).eq("id", id).then(({ error }) => { if (error) console.warn("Sign error:", error.message); });
   }
 
-  function createDocument(newRow) {
+  function insertDoc(payload) {
     if (isSupabaseConfigured) {
-      supabase.from("documents").insert({
-        title: newRow.title, type: newRow.type, student: newRow.student, issued_date: newRow.issuedDate,
-        status: newRow.status, issued_by: newRow.issuedBy, signature_required: newRow.signatureRequired,
-      }).select().single().then(({ data: inserted, error }) => {
-        if (error) {
-          console.warn("Could not save document, keeping local only:", error.message);
-          setDocs((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
-        } else {
-          setDocs((arr) => [normalizeDoc(inserted), ...arr]);
-        }
+      supabase.from("documents").insert(payload).select().single().then(({ data, error }) => {
+        if (error) console.warn("Document insert error:", error.message);
+        setDocs((arr) => [normalizeDoc(data || { id: Date.now(), ...payload, issuedDate: payload.issued_date, issuedBy: payload.issued_by, signatureRequired: payload.signature_required }), ...arr]);
       });
     } else {
-      setDocs((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+      setDocs((arr) => [{ id: Date.now(), ...payload, issuedDate: payload.issued_date, issuedBy: payload.issued_by, signatureRequired: payload.signature_required }, ...arr]);
     }
   }
 
-  function addCertificate({ student, certType }) {
-    createDocument({ title: `${certType} — ${student}`, type: "Certificate", student, issuedDate: new Date().toISOString().slice(0, 10), status: "Pending Signature", issuedBy: "Mrs. Patience Mhike", signatureRequired: true });
-    setCertModalOpen(false);
+  function addCertificate() {
+    if (!certForm.student.trim()) return;
+    insertDoc({ title: `${certForm.certType} — ${certForm.student}`, type: "Certificate", student: certForm.student, issued_date: new Date().toISOString().slice(0, 10), status: "Draft", issued_by: "Mrs. Patience Mhike", signature_required: true });
+    setCertOpen(false); setCertForm({ student: "", certType: CERTIFICATE_TYPES[0] });
   }
 
-  function addLetter({ recipient, template }) {
-    createDocument({ title: `${template} — ${recipient}`, type: "Letter", student: recipient, issuedDate: new Date().toISOString().slice(0, 10), status: "Draft", issuedBy: "Mrs. Patience Mhike", signatureRequired: true });
-    setLetterModalOpen(false);
+  function addLetter() {
+    if (!letterForm.recipient.trim()) return;
+    insertDoc({ title: `${letterForm.template} — ${letterForm.recipient}`, type: "Letter", student: letterForm.recipient, issued_date: new Date().toISOString().slice(0, 10), status: "Draft", issued_by: "Mrs. Patience Mhike", signature_required: true });
+    setLetterOpen(false); setLetterForm({ recipient: "", template: LETTER_TEMPLATES[0] });
+  }
+
+  function confirmAndDelete() {
+    setDeleting(true);
+    const id = confirmDelete.id;
+    if (isSupabaseConfigured) {
+      supabase.from("documents").delete().eq("id", id).then(({ error }) => {
+        if (error) console.warn("Delete error:", error.message);
+        setDocs((arr) => arr.filter((d) => d.id !== id));
+        setDeleting(false); setConfirmDelete(null);
+      });
+    } else {
+      setDocs((arr) => arr.filter((d) => d.id !== id));
+      setDeleting(false); setConfirmDelete(null);
+    }
   }
 
   return (
-    <div>
-      {(loading || usingLiveData) && (
-        <div style={{ marginBottom: 16 }}>
-          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
-          {usingLiveData && <Pill tone="green">Live data</Pill>}
-        </div>
-      )}
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
-        <StatCard icon={FolderOpen} label="Total Documents" value={docs.length} tone="indigo" />
-        <StatCard icon={Award} label="Certificates Issued" value={docs.filter((d) => d.type === "Certificate").length} tone="green" />
-        <StatCard icon={Clock} label="Pending Signature" value={pendingSignatures.length} tone="amber" />
-        <StatCard icon={Mail} label="Letters on File" value={docs.filter((d) => d.type === "Letter").length} tone="cyan" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <StatCard icon={FileText} label="Total Documents"    value={docs.length}                                              tone="indigo" />
+        <StatCard icon={PenTool}  label="Pending Signature"  value={docs.filter((d) => d.status === "Pending Signature").length} tone="amber" />
+        <StatCard icon={Award}    label="Certificates"       value={docs.filter((d) => d.type === "Certificate").length}       tone="green"  />
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-        <Tag active={tab === "library"} onClick={() => setTab("library")}>Document Library</Tag>
-        <Tag active={tab === "certs"} onClick={() => setTab("certs")}>Certificate Generator</Tag>
-        <Tag active={tab === "letters"} onClick={() => setTab("letters")}>Letters & Templates</Tag>
-        <Tag active={tab === "signatures"} onClick={() => setTab("signatures")}>Digital Signatures</Tag>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {["all","certificate","letter","report","audit"].map((t) => <Tag key={t} active={tab === t} onClick={() => setTab(t)}>{t.charAt(0).toUpperCase() + t.slice(1)}{t === "all" ? "s" : t === "audit" ? " Log" : "s"}</Tag>)}
       </div>
 
-      {tab === "library" && (
+      {tab !== "audit" && (
         <Card>
           <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px", flex: 1, minWidth: 200 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px", flex: 1, minWidth: 180 }}>
               <Search size={14} color={C.textFaint} />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search documents…" style={{ background: "none", border: "none", outline: "none", color: C.text, fontSize: 13, flex: 1 }} />
             </div>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px", color: C.text, fontSize: 13 }}>
-              <option>All</option>
-              <option>Certificate</option><option>Letter</option><option>Report</option><option>Record</option>
-            </select>
+            <button onClick={() => setCertOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigoSoft, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 10, padding: "8px 13px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              <Award size={14} /> Certificate
+            </button>
+            <button onClick={() => setLetterOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 13px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              <Plus size={14} /> Letter
+            </button>
           </div>
-          <Table
-            onRowClick={setSelectedDoc}
-            columns={[
-              { key: "title", label: "Document" },
-              { key: "type", label: "Type", render: (r) => <Pill tone="slate">{r.type}</Pill> },
-              { key: "student", label: "Student" },
-              { key: "issuedDate", label: "Date" },
-              { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> },
-            ]}
-            rows={filtered}
-          />
+
+          {loading ? null : filtered.length === 0 ? (
+            <EmptyState message="No documents yet." hint='Use "Certificate" or "Letter" buttons to generate the first document.' />
+          ) : (
+            <Table
+              onRowClick={setSelectedDoc}
+              columns={[
+                { key: "title",    label: "Document" },
+                { key: "type",     label: "Type",    render: (r) => <Pill tone="slate">{r.type}</Pill> },
+                { key: "student",  label: "Student" },
+                { key: "issuedDate", label: "Date" },
+                { key: "issuedBy", label: "Issued By" },
+                { key: "status",   label: "Status",  render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> },
+                { key: "actions",  label: "", render: (r) => (
+                  <button style={iconBtn(C.red)} onClick={(e) => { e.stopPropagation(); setConfirmDelete({ id: r.id, label: r.title }); }}><Trash2 size={14} /></button>
+                ) },
+              ]}
+              rows={filtered}
+            />
+          )}
         </Card>
       )}
 
-      {tab === "certs" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Award size={18} color={C.cyan} />
-              <span style={{ fontSize: 13.5, color: C.text }}>Generate a new certificate for any student — it's created as a draft awaiting signature.</span>
-            </div>
-            <button onClick={() => setCertModalOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "9px 15px", fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
-              <Plus size={14} /> Generate Certificate
-            </button>
-          </Card>
-          <Card>
-            <SectionHeader title="Recent Certificates" />
-            <Table columns={[{ key: "title", label: "Certificate" }, { key: "student", label: "Student" }, { key: "issuedDate", label: "Date" }, { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> }]} rows={docs.filter((d) => d.type === "Certificate")} />
-          </Card>
-        </div>
-      )}
-
-      {tab === "letters" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <Card>
-            <SectionHeader title="Letter Templates" action={
-              <button onClick={() => setLetterModalOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                <Plus size={14} /> Compose Letter
-              </button>
-            } />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
-              {LETTER_TEMPLATES.map((t) => (
-                <div key={t.id} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <Mail size={14} color={C.indigo} />
-                    <span style={{ fontWeight: 700, fontSize: 13, color: C.text }}>{t.name}</span>
-                  </div>
-                  <p style={{ fontSize: 12, color: C.textMuted, margin: 0, lineHeight: 1.45 }}>{t.description}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Card>
-            <SectionHeader title="Recent Letters" />
-            <Table columns={[{ key: "title", label: "Letter" }, { key: "issuedDate", label: "Date" }, { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> }]} rows={docs.filter((d) => d.type === "Letter")} />
-          </Card>
-        </div>
-      )}
-
-      {tab === "signatures" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <Card>
-            <SectionHeader title="Pending Signature Queue" subtitle="Click a document to review and sign" />
-            {pendingSignatures.length > 0 ? (
-              <Table
-                onRowClick={setSelectedDoc}
-                columns={[{ key: "title", label: "Document" }, { key: "student", label: "Student" }, { key: "issuedBy", label: "Prepared By" }, { key: "issuedDate", label: "Date" }]}
-                rows={pendingSignatures}
-              />
-            ) : (
-              <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: 20 }}>No documents currently awaiting signature.</div>
-            )}
-          </Card>
-          <Card>
-            <SectionHeader title="Signature Audit Trail" />
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {SIGNED_AUDIT_LOG.map((a, i) => (
-                <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                  <FileCheck2 size={14} color={C.green} style={{ marginTop: 2 }} />
-                  <div>
-                    <div style={{ fontSize: 12.5, color: C.text }}>{a.document}</div>
-                    <div style={{ fontSize: 11, color: C.textFaint }}>Signed by {a.signedBy} · {a.date}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
+      {tab === "audit" && (
+        <Card>
+          <SectionHeader title="Signature Audit Log" subtitle="All digitally signed documents" />
+          {SIGNED_AUDIT_LOG.length === 0
+            ? <EmptyState message="No signatures recorded yet." />
+            : <Table columns={[{ key: "document", label: "Document" }, { key: "signedBy", label: "Signed By" }, { key: "date", label: "Date" }]} rows={SIGNED_AUDIT_LOG} />
+          }
+        </Card>
       )}
 
       <DocumentModal doc={selectedDoc} onSign={signDoc} onClose={() => setSelectedDoc(null)} canSign />
-      <GenerateCertModal open={certModalOpen} onClose={() => setCertModalOpen(false)} onSubmit={addCertificate} />
-      <ComposeLetterModal open={letterModalOpen} onClose={() => setLetterModalOpen(false)} onSubmit={addLetter} />
+
+      {/* Generate Certificate */}
+      <Modal open={certOpen} onClose={() => setCertOpen(false)} title="Generate Certificate">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div><label style={L}>Student Name</label><input placeholder="e.g. Natasha Sibanda" value={certForm.student} onChange={(e) => setCertForm((f) => ({ ...f, student: e.target.value }))} style={F} /></div>
+          <div><label style={L}>Certificate Type</label><select value={certForm.certType} onChange={(e) => setCertForm((f) => ({ ...f, certType: e.target.value }))} style={F}>{CERTIFICATE_TYPES.map((c) => <option key={c}>{c}</option>)}</select></div>
+          <button onClick={addCertificate} disabled={!certForm.student.trim()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: !certForm.student.trim() ? 0.6 : 1 }}>
+            <Award size={15} /> Generate Certificate
+          </button>
+        </div>
+      </Modal>
+
+      {/* Compose Letter */}
+      <Modal open={letterOpen} onClose={() => setLetterOpen(false)} title="Compose Letter">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div><label style={L}>Recipient / Student</label><input placeholder="e.g. Tadiwa Mhofu" value={letterForm.recipient} onChange={(e) => setLetterForm((f) => ({ ...f, recipient: e.target.value }))} style={F} /></div>
+          <div><label style={L}>Template</label><select value={letterForm.template} onChange={(e) => setLetterForm((f) => ({ ...f, template: e.target.value }))} style={F}>{LETTER_TEMPLATES.map((t) => <option key={t}>{t}</option>)}</select></div>
+          <button onClick={addLetter} disabled={!letterForm.recipient.trim()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: !letterForm.recipient.trim() ? 0.6 : 1 }}>
+            <Send size={15} /> Generate Letter
+          </button>
+        </div>
+      </Modal>
+
+      {/* Confirm Delete */}
+      <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Confirm Delete">
+        <p style={{ fontSize: 13.5, color: C.textMuted, marginBottom: 20 }}>Permanently delete <strong style={{ color: C.text }}>{confirmDelete?.label}</strong>? This cannot be undone.</p>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => setConfirmDelete(null)} style={{ flex: 1, background: C.surface2, color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: 11, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+          <button onClick={confirmAndDelete} disabled={deleting} style={{ flex: 1, background: C.red, color: "#fff", border: "none", borderRadius: 10, padding: 11, fontSize: 13.5, fontWeight: 700, cursor: "pointer", opacity: deleting ? 0.7 : 1 }}>
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
-/* ============================== TEACHER VIEW ============================== */
+/* ── Teacher view ── */
 function DocumentsTeacherView({ docs, setDocs }) {
-  const [letterModalOpen, setLetterModalOpen] = useState(false);
+  const [letterOpen, setLetterOpen] = useState(false);
+  const [form, setForm] = useState({ recipient: "", template: LETTER_TEMPLATES[0] });
   const myDocs = docs.filter((d) => d.issuedBy === "Mrs. R. Chikore" || d.issuedBy === "Mr. T. Moyo");
+  const F = { width: "100%", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px", color: C.text, fontSize: 13, boxSizing: "border-box" };
+  const L = { fontSize: 12, color: C.textFaint, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", display: "block", marginBottom: 5 };
 
-  function addLetter({ recipient, template }) {
-    const newRow = { title: `${template} — ${recipient}`, type: "Letter", student: recipient, issuedDate: new Date().toISOString().slice(0, 10), status: "Draft", issuedBy: "Mr. T. Moyo", signatureRequired: true };
+  function addLetter() {
+    if (!form.recipient.trim()) return;
+    const payload = { title: `${form.template} — ${form.recipient}`, type: "Letter", student: form.recipient, issued_date: new Date().toISOString().slice(0, 10), status: "Draft", issued_by: "Mr. T. Moyo", signature_required: true };
     if (isSupabaseConfigured) {
-      supabase.from("documents").insert({
-        title: newRow.title, type: newRow.type, student: newRow.student, issued_date: newRow.issuedDate,
-        status: newRow.status, issued_by: newRow.issuedBy, signature_required: newRow.signatureRequired,
-      }).select().single().then(({ data: inserted, error }) => {
-        if (error) {
-          console.warn("Could not save document, keeping local only:", error.message);
-          setDocs((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
-        } else {
-          setDocs((arr) => [normalizeDoc(inserted), ...arr]);
-        }
+      supabase.from("documents").insert(payload).select().single().then(({ data, error }) => {
+        if (error) console.warn("Document insert error:", error.message);
+        setDocs((arr) => [normalizeDoc(data || { id: Date.now(), ...payload, issuedDate: payload.issued_date, issuedBy: payload.issued_by, signatureRequired: payload.signature_required }), ...arr]);
       });
     } else {
-      setDocs((arr) => [{ id: Date.now(), ...newRow }, ...arr]);
+      setDocs((arr) => [{ id: Date.now(), ...payload, issuedDate: payload.issued_date, issuedBy: payload.issued_by, signatureRequired: payload.signature_required }, ...arr]);
     }
-    setLetterModalOpen(false);
+    setLetterOpen(false); setForm({ recipient: "", template: LETTER_TEMPLATES[0] });
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Mail size={18} color={C.cyan} />
-          <span style={{ fontSize: 13.5, color: C.text }}>Need a recommendation letter or report drafted for a student? Start here — it goes to the office for signature.</span>
-        </div>
-        <button onClick={() => setLetterModalOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "9px 15px", fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Mail size={18} color={C.cyan} /><span style={{ fontSize: 13.5, color: C.text }}>Need a recommendation letter or report drafted? Start here — it goes to the office for signature.</span></div>
+        <button onClick={() => setLetterOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: "9px 15px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
           <Plus size={14} /> Draft a Letter
         </button>
       </Card>
       <Card>
         <SectionHeader title="My Drafted Documents" />
-        {myDocs.length > 0 ? (
-          <Table columns={[{ key: "title", label: "Document" }, { key: "student", label: "Student" }, { key: "issuedDate", label: "Date" }, { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> }]} rows={myDocs} />
-        ) : (
-          <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: 20 }}>No documents drafted yet.</div>
-        )}
+        {myDocs.length === 0
+          ? <EmptyState message="No documents drafted yet." />
+          : <Table columns={[{ key: "title", label: "Document" }, { key: "student", label: "Student" }, { key: "issuedDate", label: "Date" }, { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{r.status}</Pill> }]} rows={myDocs} />
+        }
       </Card>
-      <ComposeLetterModal open={letterModalOpen} onClose={() => setLetterModalOpen(false)} onSubmit={addLetter} />
+      <Modal open={letterOpen} onClose={() => setLetterOpen(false)} title="Draft a Letter">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div><label style={L}>Recipient / Student</label><input placeholder="e.g. Tadiwa Mhofu" value={form.recipient} onChange={(e) => setForm((f) => ({ ...f, recipient: e.target.value }))} style={F} /></div>
+          <div><label style={L}>Template</label><select value={form.template} onChange={(e) => setForm((f) => ({ ...f, template: e.target.value }))} style={F}>{LETTER_TEMPLATES.map((t) => <option key={t}>{t}</option>)}</select></div>
+          <button onClick={addLetter} disabled={!form.recipient.trim()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.indigo, color: "#fff", border: "none", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: !form.recipient.trim() ? 0.6 : 1 }}>
+            <Send size={15} /> Generate Draft
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
-/* ============================== STUDENT / PARENT VIEW ============================== */
+/* ── Student/Parent view ── */
 function DocumentsPersonalView({ role, docs }) {
   const studentName = "Tadiwa Mhofu";
-  const myDocs = docs.filter((d) => d.student === studentName && (d.status === "Issued" || d.status === "Signed"));
-
+  const myDocs = docs.filter((d) => d.student === studentName && ["Issued","Signed"].includes(d.status));
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <Card>
-        <SectionHeader title={role === "parent" ? `${studentName}'s Documents` : "My Documents"} subtitle="Issued certificates, letters and reports" />
-        {myDocs.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <Card>
+      <SectionHeader title={role === "parent" ? `${studentName}'s Documents` : "My Documents"} subtitle="Issued certificates, letters and reports" />
+      {myDocs.length === 0
+        ? <EmptyState message="No documents issued yet." hint="Documents issued to you by the school will appear here." />
+        : <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {myDocs.map((d) => (
               <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px solid ${C.borderSoft}` }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: C.indigoSoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <FileText size={16} color={C.indigo} />
-                </div>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: C.indigoSoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><FileText size={16} color={C.indigo} /></div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13.5, color: C.text, fontWeight: 600 }}>{d.title}</div>
                   <div style={{ fontSize: 11.5, color: C.textMuted }}>{d.type} · {d.issuedDate}</div>
@@ -385,39 +300,26 @@ function DocumentsPersonalView({ role, docs }) {
               </div>
             ))}
           </div>
-        ) : (
-          <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: 20 }}>No documents issued yet.</div>
-        )}
-      </Card>
-    </div>
+      }
+    </Card>
   );
 }
 
-/* ============================== ROOT (preview wrapper) ============================== */
-
+/* ── Root ── */
 function DocumentsModule({ role }) {
-  const [docs, setDocs] = useState(MOCK_DOCUMENTS);
+  const [docs,    setDocs]    = useState([]);
   const [loading, setLoading] = useState(isSupabaseConfigured);
-  const [usingLiveData, setUsingLiveData] = useState(false);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    supabase
-      .from("documents")
-      .select("*")
-      .order("issued_date", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn("Falling back to demo document data:", error.message);
-        } else if (data && data.length > 0) {
-          setDocs(data.map(normalizeDoc));
-          setUsingLiveData(true);
-        }
-        setLoading(false);
-      });
+    if (!isSupabaseConfigured) { setLoading(false); return; }
+    supabase.from("documents").select("*").order("issued_date", { ascending: false }).then(({ data, error }) => {
+      if (error) console.warn("Documents fetch error:", error.message);
+      setDocs((data || []).map(normalizeDoc));
+      setLoading(false);
+    });
   }, []);
 
-  if (role === "admin") return <DocumentsAdminView docs={docs} setDocs={setDocs} loading={loading} usingLiveData={usingLiveData} />;
+  if (role === "admin")   return <DocumentsAdminView docs={docs} setDocs={setDocs} loading={loading} />;
   if (role === "teacher") return <DocumentsTeacherView docs={docs} setDocs={setDocs} />;
   return <DocumentsPersonalView role={role} docs={docs} />;
 }

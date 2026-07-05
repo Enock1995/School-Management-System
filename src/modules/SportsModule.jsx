@@ -15,23 +15,6 @@ import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 const ICON_MAP = { Trophy, Award, BookOpen, Swords, Drama, FlaskConical, Camera, Heart };
 const ICON_KEYS = Object.keys(ICON_MAP);
 
-const MOCK_TEAMS = [
-  { id: "T1", name: "Football", category: "Boys", coach: "Mr. D. Banda", icon: "Trophy" },
-  { id: "T2", name: "Netball", category: "Girls", coach: "Mrs. R. Chikore", icon: "Trophy" },
-  { id: "T3", name: "Athletics", category: "Mixed", coach: "Mr. S. Ndlovu", icon: "Award" },
-  { id: "T4", name: "Swimming", category: "Mixed", coach: "Mrs. P. Gumbo", icon: "Award" },
-  { id: "T5", name: "Basketball", category: "Boys", coach: "Mr. T. Moyo", icon: "Trophy" },
-];
-
-const MOCK_FIXTURES = [
-  { id: 1, team: "Football", opponent: "St. George's College", date: "2026-06-27", venue: "Springfield Grounds", homeAway: "Home", status: "Upcoming", result: null },
-  { id: 2, team: "Netball", opponent: "Dominican Convent", date: "2026-06-25", venue: "Dominican Convent", homeAway: "Away", status: "Upcoming", result: null },
-  { id: 3, team: "Athletics", opponent: "Inter-School Athletics Meet", date: "2026-06-28", venue: "Harare Sports Club", homeAway: "Neutral", status: "Upcoming", result: null },
-  { id: 4, team: "Football", opponent: "Prince Edward School", date: "2026-06-13", venue: "Prince Edward School", homeAway: "Away", status: "Completed", result: "Won 2–1" },
-  { id: 5, team: "Swimming", opponent: "Westridge High", date: "2026-06-08", venue: "Springfield Pool", homeAway: "Home", status: "Completed", result: "Won 145–98" },
-  { id: 6, team: "Basketball", opponent: "Lomagundi College", date: "2026-06-05", venue: "Lomagundi College", homeAway: "Away", status: "Completed", result: "Lost 56–62" },
-];
-
 const ATHLETES = [
   { name: "Tinotenda Chigumba", cls: "Form 6A", team: "Football", position: "Captain / Striker" },
   { name: "Tadiwa Mhofu", cls: "Form 4A", team: "Football", position: "Midfielder" },
@@ -40,24 +23,6 @@ const ATHLETES = [
   { name: "Chiedza Goredema", cls: "Form 5A", team: "Netball", position: "Captain / Goal Shooter" },
   { name: "Kudzai Nyamande", cls: "Form 2A", team: "Athletics", position: "200m Sprint" },
 ];
-
-const MOCK_CLUBS = [
-  { id: "C1", name: "Debate Club", category: "Academic", patron: "Mrs. R. Chikore", schedule: "Wednesdays 3:30 PM", members: 18, icon: "BookOpen" },
-  { id: "C2", name: "Chess Club", category: "Academic", patron: "Mr. T. Moyo", schedule: "Tuesdays 3:30 PM", members: 14, icon: "Swords" },
-  { id: "C3", name: "Drama Society", category: "Creative", patron: "Mrs. P. Gumbo", schedule: "Thursdays 3:30 PM", members: 22, icon: "Drama" },
-  { id: "C4", name: "Science Club", category: "Academic", patron: "Mr. S. Ndlovu", schedule: "Mondays 3:30 PM", members: 16, icon: "FlaskConical" },
-  { id: "C5", name: "Interact (Community Service)", category: "Service", patron: "Mrs. Patience Mhike", schedule: "Fridays 2:00 PM", members: 20, icon: "Heart" },
-  { id: "C6", name: "Photography Club", category: "Creative", patron: "Mr. D. Banda", schedule: "Wednesdays 3:30 PM", members: 11, icon: "Camera" },
-];
-
-const MOCK_CLUB_MEMBERS_MAP = {
-  "Debate Club": ["Tinotenda Chigumba", "Chiedza Goredema", "Maria Fernandez", "Anesu Chitate"],
-  "Chess Club": ["Tadiwa Mhofu", "Liam Osei", "Stephanie Mhike"],
-  "Drama Society": ["Natasha Sibanda", "Rutendo Marecha", "Tapiwa Chirwa"],
-  "Science Club": ["Brian Mutasa", "Kudzai Nyamande", "Anesu Chitate"],
-  "Interact (Community Service)": ["Tadiwa Mhofu", "Chiedza Goredema", "Stephanie Mhike"],
-  "Photography Club": ["Maria Fernandez", "Tinotenda Chigumba"],
-};
 
 const ACTIVITY_LOG = [
   { title: "Debate Club wins Regional Inter-School Debate", group: "Debate Club", date: "2026-06-10", summary: "Springfield's team placed 1st against 8 competing schools in the regional finals held in Harare." },
@@ -99,7 +64,7 @@ function ClubModal({ club, clubMembersMap, onClose }) {
 }
 
 /* ============================== ADMIN VIEW ============================== */
-function SportsAdminView({ teams, clubs, fixtures, clubMembersMap, loading, usingLiveData, onFixtureAdded, onClubAdded }) {
+function SportsAdminView({ teams, clubs, fixtures, clubMembersMap, loading, onFixtureAdded, onClubAdded }) {
   const [tab, setTab] = useState("fixtures");
   const [selectedClub, setSelectedClub] = useState(null);
 
@@ -149,12 +114,7 @@ function SportsAdminView({ teams, clubs, fixtures, clubMembersMap, loading, usin
 
   return (
     <div>
-      {(loading || usingLiveData) && (
-        <div style={{ marginBottom: 16 }}>
-          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
-          {usingLiveData && <Pill tone="green">Live data</Pill>}
-        </div>
-      )}
+      {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint, marginBottom: 16 }}><Loader2 size={12} className="spin" /> Syncing…</span>}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
         <StatCard icon={Trophy} label="Active Teams" value={teams.length} tone="indigo" />
         <StatCard icon={CalendarDays} label="Upcoming Fixtures" value={upcoming} tone="cyan" />
@@ -381,7 +341,7 @@ function SportsTeacherView({ teams, clubs, fixtures, onResultRecorded }) {
     });
   }
 
-  const clubMembersPlaceholder = myClub ? (MOCK_CLUB_MEMBERS_MAP[myClub.name] || []) : [];
+  const clubMembersPlaceholder = myClub ? [] : [];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -490,44 +450,29 @@ function SportsPersonalView({ role, clubs, fixtures, clubMembersMap }) {
 
 /* ============================== ROOT ============================== */
 function SportsModule({ role }) {
-  const [teams, setTeams] = useState(MOCK_TEAMS);
-  const [clubs, setClubs] = useState(MOCK_CLUBS);
-  const [fixtures, setFixtures] = useState(MOCK_FIXTURES);
-  const [clubMembersMap, setClubMembersMap] = useState(MOCK_CLUB_MEMBERS_MAP);
+  const [teams, setTeams] = useState([]);
+  const [clubs, setClubs] = useState([]);
+  const [fixtures, setFixtures] = useState([]);
+  const [clubMembersMap, setClubMembersMap] = useState({});
   const [loading, setLoading] = useState(isSupabaseConfigured);
-  const [usingLiveData, setUsingLiveData] = useState(false);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured) { setLoading(false); return; }
     Promise.all([
       supabase.from("teams").select("*").order("id"),
       supabase.from("clubs").select("*").order("id"),
       supabase.from("fixtures").select("*").order("date"),
       supabase.from("club_members").select("*"),
     ]).then(([teamsRes, clubsRes, fixturesRes, membersRes]) => {
-      if (teamsRes.error) console.warn("Falling back to demo team data:", teamsRes.error.message);
-      else if (teamsRes.data && teamsRes.data.length > 0) { setTeams(teamsRes.data); setUsingLiveData(true); }
-
-      if (clubsRes.error) console.warn("Falling back to demo club data:", clubsRes.error.message);
-      else if (clubsRes.data && clubsRes.data.length > 0) { setClubs(clubsRes.data); setUsingLiveData(true); }
-
-      if (fixturesRes.error) console.warn("Falling back to demo fixture data:", fixturesRes.error.message);
-      else if (fixturesRes.data && fixturesRes.data.length > 0) {
-        setFixtures(fixturesRes.data.map(normalizeFixture));
-        setUsingLiveData(true);
-      }
-
-      if (membersRes.error) console.warn("Falling back to demo club members:", membersRes.error.message);
-      else if (membersRes.data && membersRes.data.length > 0) {
-        const map = {};
-        membersRes.data.forEach(({ club_name, student_name }) => {
-          if (!map[club_name]) map[club_name] = [];
-          map[club_name].push(student_name);
-        });
-        setClubMembersMap(map);
-        setUsingLiveData(true);
-      }
-
+      setTeams(teamsRes.data || []);
+      setClubs(clubsRes.data || []);
+      setFixtures((fixturesRes.data || []).map(normalizeFixture));
+      const map = {};
+      (membersRes.data || []).forEach(({ club_name, student_name }) => {
+        if (!map[club_name]) map[club_name] = [];
+        map[club_name].push(student_name);
+      });
+      setClubMembersMap(map);
       setLoading(false);
     });
   }, []);
@@ -537,7 +482,6 @@ function SportsModule({ role }) {
     if (isSupabaseConfigured) {
       supabase.from("fixtures").insert(dbRow).select().single().then(({ data, error }) => {
         if (error) console.warn("Could not save fixture:", error.message);
-        else setUsingLiveData(true);
         setFixtures((arr) => [normalizeFixture(data || { ...dbRow, homeAway: row.homeAway }), ...arr]);
         done();
       });
@@ -551,7 +495,6 @@ function SportsModule({ role }) {
     if (isSupabaseConfigured) {
       supabase.from("clubs").insert(row).select().single().then(({ data, error }) => {
         if (error) console.warn("Could not save club:", error.message);
-        else setUsingLiveData(true);
         setClubs((arr) => [...arr, data || row]);
         done();
       });
@@ -566,7 +509,6 @@ function SportsModule({ role }) {
     if (isSupabaseConfigured) {
       supabase.from("fixtures").update({ result, status: "Completed" }).eq("id", fixtureId).then(({ error }) => {
         if (error) console.warn("Could not save result:", error.message);
-        else setUsingLiveData(true);
         done();
       });
     } else {
@@ -574,7 +516,7 @@ function SportsModule({ role }) {
     }
   }
 
-  if (role === "admin") return <SportsAdminView teams={teams} clubs={clubs} fixtures={fixtures} clubMembersMap={clubMembersMap} loading={loading} usingLiveData={usingLiveData} onFixtureAdded={handleFixtureAdded} onClubAdded={handleClubAdded} />;
+  if (role === "admin") return <SportsAdminView teams={teams} clubs={clubs} fixtures={fixtures} clubMembersMap={clubMembersMap} loading={loading} onFixtureAdded={handleFixtureAdded} onClubAdded={handleClubAdded} />;
   if (role === "teacher") return <SportsTeacherView teams={teams} clubs={clubs} fixtures={fixtures} onResultRecorded={handleResultRecorded} />;
   return <SportsPersonalView role={role} clubs={clubs} fixtures={fixtures} clubMembersMap={clubMembersMap} />;
 }

@@ -10,37 +10,6 @@ import { C, fmtMoney, displayFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, StatCard, Avatar, Tag, Table, Modal, CustomTooltip, statusTone } from "../components/ui";
 import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
-const MOCK_ALUMNI = [
-  { id: "AL-01", name: "Tendai Mutema", gradYear: 2015, profession: "Software Engineer", company: "Google", location: "London, UK", email: "t.mutema@alumni.springfield.edu", phone: "+44 20 7946 0011", donorStatus: "Donor" },
-  { id: "AL-02", name: "Rumbidzai Chando", gradYear: 2012, profession: "Medical Doctor", company: "Parirenyatwa Hospital", location: "Harare, ZW", email: "r.chando@alumni.springfield.edu", phone: "+263 77 220 4471", donorStatus: "Donor" },
-  { id: "AL-03", name: "James Coetzee", gradYear: 2018, profession: "Civil Engineer", company: "Group Five", location: "Johannesburg, SA", email: "j.coetzee@alumni.springfield.edu", phone: "+27 11 233 8800", donorStatus: "Non-donor" },
-  { id: "AL-04", name: "Farai Mhlanga", gradYear: 2009, profession: "Entrepreneur", company: "Mhlanga Logistics", location: "Harare, ZW", email: "f.mhlanga@alumni.springfield.edu", phone: "+263 71 442 6654", donorStatus: "Donor" },
-  { id: "AL-05", name: "Tariro Ndoro", gradYear: 2020, profession: "Graduate Student", company: "University of Cape Town", location: "Cape Town, SA", email: "t.ndoro@alumni.springfield.edu", phone: "+27 21 650 9111", donorStatus: "Non-donor" },
-  { id: "AL-06", name: "Blessing Chivero", gradYear: 2014, profession: "Investment Banker", company: "Standard Chartered", location: "Harare, ZW", email: "b.chivero@alumni.springfield.edu", phone: "+263 78 901 2233", donorStatus: "Donor" },
-  { id: "AL-07", name: "Anesu Mapfumo", gradYear: 2017, profession: "Architect", company: "Mapfumo Designs", location: "Harare, ZW", email: "a.mapfumo@alumni.springfield.edu", phone: "+263 73 209 8821", donorStatus: "Non-donor" },
-  { id: "AL-08", name: "Tatenda Gwese", gradYear: 2011, profession: "Pilot", company: "Fastjet", location: "Harare, ZW", email: "t.gwese@alumni.springfield.edu", phone: "+263 77 998 4432", donorStatus: "Donor" },
-];
-
-const MOCK_DONATIONS = [
-  { alumnus: "Tendai Mutema", amount: 500, date: "2026-05-10", campaign: "Library Renovation Fund", method: "Bank Transfer" },
-  { alumnus: "Farai Mhlanga", amount: 1200, date: "2026-04-22", campaign: "Scholarship Fund", method: "Bank Transfer" },
-  { alumnus: "Blessing Chivero", amount: 750, date: "2026-06-01", campaign: "Scholarship Fund", method: "Stripe" },
-  { alumnus: "Tatenda Gwese", amount: 300, date: "2026-03-15", campaign: "Sports Complex Fund", method: "EcoCash" },
-  { alumnus: "Rumbidzai Chando", amount: 400, date: "2026-05-28", campaign: "Library Renovation Fund", method: "Paynow" },
-];
-
-const MOCK_EVENTS = [
-  { id: 1, title: "Class of 2015 — 10 Year Reunion", date: "2026-08-15", venue: "Springfield Main Hall", type: "Reunion", rsvp: 42, status: "Upcoming" },
-  { id: 2, title: "Alumni Networking Mixer — Harare", date: "2026-07-10", venue: "Meikles Hotel", type: "Networking", rsvp: 28, status: "Upcoming" },
-  { id: 3, title: "Annual Alumni Golf Day", date: "2026-05-03", venue: "Royal Harare Golf Club", type: "Fundraiser", rsvp: 36, status: "Completed" },
-];
-
-const MOCK_MENTORSHIP = [
-  { id: 1, mentor: "Tendai Mutema", field: "Software Engineer", student: "Tadiwa Mhofu", status: "Matched" },
-  { id: 2, mentor: "Rumbidzai Chando", field: "Medical Doctor", student: "Chiedza Goredema", status: "Matched" },
-  { id: 3, mentor: "Anesu Mapfumo", field: "Architect", student: "Tinotenda Chigumba", status: "Pending" },
-];
-
 const EVENT_TYPES = ["Reunion", "Networking", "Fundraiser", "Workshop", "Other"];
 
 function computeDonationTrend(donations) {
@@ -102,7 +71,7 @@ function AlumniModal({ alum, donations, onClose }) {
 }
 
 /* ============================== ADMIN VIEW ============================== */
-function AlumniAdminView({ alumni, donations, events, mentorship, loading, usingLiveData, onAlumnusAdded, onEventAdded, onMatchAdded }) {
+function AlumniAdminView({ alumni, donations, events, mentorship, loading, onAlumnusAdded, onEventAdded, onMatchAdded }) {
   const [tab, setTab] = useState("directory");
   const [query, setQuery] = useState("");
   const [selectedAlum, setSelectedAlum] = useState(null);
@@ -159,12 +128,7 @@ function AlumniAdminView({ alumni, donations, events, mentorship, loading, using
 
   return (
     <div>
-      {(loading || usingLiveData) && (
-        <div style={{ marginBottom: 16 }}>
-          {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Syncing live data…</span>}
-          {usingLiveData && <Pill tone="green">Live data</Pill>}
-        </div>
-      )}
+      {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint, marginBottom: 16 }}><Loader2 size={12} className="spin" /> Syncing…</span>}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
         <StatCard icon={Users} label="Total Alumni" value={alumni.length} tone="indigo" />
         <StatCard icon={Award} label="Active Donors" value={donorCount} tone="green" />
@@ -498,33 +462,24 @@ function AlumniStudentView({ alumni, mentorship, events }) {
 
 /* ============================== ROOT ============================== */
 function AlumniModule({ role }) {
-  const [alumni, setAlumni] = useState(MOCK_ALUMNI);
-  const [donations, setDonations] = useState(MOCK_DONATIONS);
-  const [events, setEvents] = useState(MOCK_EVENTS);
-  const [mentorship, setMentorship] = useState(MOCK_MENTORSHIP);
+  const [alumni, setAlumni] = useState([]);
+  const [donations, setDonations] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [mentorship, setMentorship] = useState([]);
   const [loading, setLoading] = useState(isSupabaseConfigured);
-  const [usingLiveData, setUsingLiveData] = useState(false);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured) { setLoading(false); return; }
     Promise.all([
       supabase.from("alumni").select("*").order("grad_year", { ascending: false }),
       supabase.from("donations").select("*").order("date", { ascending: false }),
       supabase.from("events").select("*").order("date"),
       supabase.from("mentorship").select("*").order("mentor"),
     ]).then(([alumniRes, donationsRes, eventsRes, mentorshipRes]) => {
-      if (alumniRes.error) console.warn("Falling back to demo alumni data:", alumniRes.error.message);
-      else if (alumniRes.data && alumniRes.data.length > 0) { setAlumni(alumniRes.data.map(normalizeAlumnus)); setUsingLiveData(true); }
-
-      if (donationsRes.error) console.warn("Falling back to demo donation data:", donationsRes.error.message);
-      else if (donationsRes.data && donationsRes.data.length > 0) { setDonations(donationsRes.data); setUsingLiveData(true); }
-
-      if (eventsRes.error) console.warn("Falling back to demo event data:", eventsRes.error.message);
-      else if (eventsRes.data && eventsRes.data.length > 0) { setEvents(eventsRes.data); setUsingLiveData(true); }
-
-      if (mentorshipRes.error) console.warn("Falling back to demo mentorship data:", mentorshipRes.error.message);
-      else if (mentorshipRes.data && mentorshipRes.data.length > 0) { setMentorship(mentorshipRes.data); setUsingLiveData(true); }
-
+      setAlumni((alumniRes.data || []).map(normalizeAlumnus));
+      setDonations(donationsRes.data || []);
+      setEvents(eventsRes.data || []);
+      setMentorship(mentorshipRes.data || []);
       setLoading(false);
     });
   }, []);
@@ -534,7 +489,6 @@ function AlumniModule({ role }) {
     if (isSupabaseConfigured) {
       supabase.from("alumni").insert(dbRow).select().single().then(({ data, error }) => {
         if (error) console.warn("Could not save alumnus:", error.message);
-        else setUsingLiveData(true);
         setAlumni((arr) => [normalizeAlumnus(data || row), ...arr]);
         done();
       });
@@ -548,7 +502,6 @@ function AlumniModule({ role }) {
     if (isSupabaseConfigured) {
       supabase.from("events").insert(row).select().single().then(({ data, error }) => {
         if (error) console.warn("Could not save event:", error.message);
-        else setUsingLiveData(true);
         setEvents((arr) => [...arr, data || row]);
         done();
       });
@@ -562,7 +515,6 @@ function AlumniModule({ role }) {
     if (isSupabaseConfigured) {
       supabase.from("mentorship").insert(row).select().single().then(({ data, error }) => {
         if (error) console.warn("Could not save mentorship match:", error.message);
-        else setUsingLiveData(true);
         setMentorship((arr) => [...arr, data || row]);
         done();
       });
@@ -572,7 +524,7 @@ function AlumniModule({ role }) {
     }
   }
 
-  if (role === "admin") return <AlumniAdminView alumni={alumni} donations={donations} events={events} mentorship={mentorship} loading={loading} usingLiveData={usingLiveData} onAlumnusAdded={handleAlumnusAdded} onEventAdded={handleEventAdded} onMatchAdded={handleMatchAdded} />;
+  if (role === "admin") return <AlumniAdminView alumni={alumni} donations={donations} events={events} mentorship={mentorship} loading={loading} onAlumnusAdded={handleAlumnusAdded} onEventAdded={handleEventAdded} onMatchAdded={handleMatchAdded} />;
   if (role === "teacher") return <AlumniTeacherView alumni={alumni} mentorship={mentorship} events={events} onMatchAdded={handleMatchAdded} />;
   return <AlumniStudentView alumni={alumni} mentorship={mentorship} events={events} />;
 }
