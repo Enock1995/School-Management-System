@@ -332,8 +332,10 @@ function DisciplineTeacherView({ incidents, setIncidents }) {
 }
 
 /* ── Student/Parent view ── */
-function DisciplinePersonalView({ role, incidents }) {
-  const studentName = "Tadiwa Mhofu";
+function DisciplinePersonalView({ role, incidents, currentUser }) {
+  const studentName = role === "student"
+    ? (currentUser?.full_name || "")
+    : (currentUser?.linked_student_name || "");
   const myPoints    = BEHAVIOR_POINTS.find((s) => s.name === studentName) || { merits: 0, demerits: 0, net: 0 };
   const myIncidents = incidents.filter((i) => i.student === studentName);
   return (
@@ -355,7 +357,7 @@ function DisciplinePersonalView({ role, incidents }) {
 }
 
 /* ── Root ── */
-function DisciplineModule({ role }) {
+function DisciplineModule({ role, currentUser }) {
   const [incidents, setIncidents] = useState([]);
   const [loading,   setLoading]   = useState(isSupabaseConfigured);
 
@@ -373,7 +375,7 @@ function DisciplineModule({ role }) {
       {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint, marginBottom: 16 }}><Loader2 size={12} className="spin" /> Syncing…</span>}
       {role === "admin"   && <DisciplineAdminView   incidents={incidents} setIncidents={setIncidents} />}
       {role === "teacher" && <DisciplineTeacherView  incidents={incidents} setIncidents={setIncidents} />}
-      {(role === "student" || role === "parent") && <DisciplinePersonalView role={role} incidents={incidents} />}
+      {(role === "student" || role === "parent") && <DisciplinePersonalView role={role} incidents={incidents} currentUser={currentUser} />}
     </div>
   );
 }

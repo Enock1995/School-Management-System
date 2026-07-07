@@ -190,6 +190,10 @@ export default function App() {
           </div>
           Cambridge & ZIMSEC · Harare
         </div>
+        <div style={{ textAlign: "center", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.borderSoft}` }}>
+          <div style={{ fontSize: 9, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.06em" }}>Developed by</div>
+          <div style={{ fontSize: 10.5, color: C.textFaint, fontWeight: 700, marginTop: 2 }}>Sir Enocks Cor Technologies</div>
+        </div>
       </div>
 
       {mobileNavOpen && <div onClick={() => setMobileNavOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 80 }} />}
@@ -252,26 +256,26 @@ export default function App() {
 
         {/* Content */}
         <div style={{ padding: 26, maxWidth: 1280 }}>
-          {activeModule === "dashboard" && <DashboardModule role={role} />}
-          {activeModule === "students" && <StudentsModule role={role} onSelectStudent={setSelectedStudent} />}
-          {activeModule === "academics" && <AcademicsModule role={role} />}
-          {activeModule === "attendance" && <AttendanceModule role={role} />}
-          {activeModule === "examinations" && <ExaminationsModule role={role} />}
-          {activeModule === "finance" && <FinanceModule role={role} />}
-          {activeModule === "communication" && <CommunicationModule role={role} />}
-          {activeModule === "library" && <LibraryModule role={role} />}
-          {activeModule === "transport" && <TransportModule role={role} />}
-          {activeModule === "aihub" && <AIHubModule role={role} />}
-          {activeModule === "hr" && <HRPayrollModule role={role} />}
-          {activeModule === "discipline" && <DisciplineModule role={role} />}
-          {activeModule === "hostel" && <HostelModule role={role} />}
-          {activeModule === "health" && <HealthModule role={role} />}
-          {activeModule === "sports" && <SportsModule role={role} />}
-          {activeModule === "alumni" && <AlumniModule role={role} />}
-          {activeModule === "documents" && <DocumentsModule role={role} />}
-          {activeModule === "reports" && <ReportsModule role={role} />}
-          {activeModule === "superadmin" && <SuperAdminModule />}
-          {activeModule === "settings" && <SettingsModule role={role} currentUser={user} />}
+          {activeModule === "dashboard"    && <DashboardModule    role={role} currentUser={user} />}
+          {activeModule === "students"     && <StudentsModule     role={role} onSelectStudent={setSelectedStudent} />}
+          {activeModule === "academics"    && <AcademicsModule    role={role} currentUser={user} />}
+          {activeModule === "attendance"   && <AttendanceModule   role={role} currentUser={user} />}
+          {activeModule === "examinations" && <ExaminationsModule role={role} currentUser={user} />}
+          {activeModule === "finance"      && <FinanceModule      role={role} currentUser={user} />}
+          {activeModule === "communication"&& <CommunicationModule role={role} />}
+          {activeModule === "library"      && <LibraryModule      role={role} currentUser={user} />}
+          {activeModule === "transport"    && <TransportModule    role={role} />}
+          {activeModule === "aihub"        && <AIHubModule        role={role} currentUser={user} />}
+          {activeModule === "hr"           && <HRPayrollModule    role={role} currentUser={user} />}
+          {activeModule === "discipline"   && <DisciplineModule   role={role} currentUser={user} />}
+          {activeModule === "hostel"       && <HostelModule       role={role} currentUser={user} />}
+          {activeModule === "health"       && <HealthModule       role={role} currentUser={user} />}
+          {activeModule === "sports"       && <SportsModule       role={role} currentUser={user} />}
+          {activeModule === "alumni"       && <AlumniModule       role={role} currentUser={user} />}
+          {activeModule === "documents"    && <DocumentsModule    role={role} currentUser={user} />}
+          {activeModule === "reports"      && <ReportsModule      role={role} />}
+          {activeModule === "superadmin"   && <SuperAdminModule />}
+          {activeModule === "settings"     && <SettingsModule     role={role} currentUser={user} />}
         </div>
       </div>
 

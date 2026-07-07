@@ -439,8 +439,8 @@ function HRAdminView({ staff, setStaff, loading }) {
 }
 
 /* ─── Self-service (teacher) view ─────────────────────────────────────────── */
-function HRSelfServiceView({ staff }) {
-  const me = staff[0];
+function HRSelfServiceView({ staff, currentUser }) {
+  const me = staff.find((s) => s.name === currentUser?.full_name) || staff[0];
   if (!me) return (
     <Card>
       <EmptyState icon={Users} message="Your staff profile is not set up yet." hint="Contact the administrator to have your record added." />
@@ -466,7 +466,7 @@ function HRSelfServiceView({ staff }) {
 }
 
 /* ─── Root ───────────────────────────────────────────────────────────────── */
-function HRPayrollModule({ role }) {
+function HRPayrollModule({ role, currentUser }) {
   const [staff,   setStaff]   = useState([]);
   const [loading, setLoading] = useState(isSupabaseConfigured);
 
@@ -484,7 +484,7 @@ function HRPayrollModule({ role }) {
       {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint, marginBottom: 16 }}><Loader2 size={12} className="spin" /> Syncing…</span>}
       {role === "admin"
         ? <HRAdminView staff={staff} setStaff={setStaff} loading={loading} />
-        : <HRSelfServiceView staff={staff} />
+        : <HRSelfServiceView staff={staff} currentUser={currentUser} />
       }
     </div>
   );

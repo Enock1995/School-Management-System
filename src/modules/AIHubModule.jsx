@@ -1,13 +1,28 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Users, AlertTriangle, CheckCircle2, TrendingUp, Info
 } from "lucide-react";
-import { C, fmtMoney, monoFont, displayFont } from "../lib/theme";
-import { Pill, Card, SectionHeader, StatCard, ProgressBar, Avatar, Table, Modal, Tag, CustomTooltip, riskTone, statusTone } from "../components/ui";
-import { CLASSES, SUBJECTS, STUDENTS, APPLICANTS, STAFF, ENROLLMENT_TREND, REVENUE_TREND, CLASS_PERFORMANCE, FEE_STATUS, AI_ALERTS, EXAMS, RESULTS_F4A_MATH, INVOICES, PAYMENT_METHODS, ANNOUNCEMENTS, BOOKS, LOANS, ROUTES, TIMETABLE_F4A } from "../data/mockData";
+import { C } from "../lib/theme";
+import { Pill, Card, SectionHeader, StatCard } from "../components/ui";
 import { ChatPanel } from "../components/ChatPanel";
+import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
+
+const AI_ALERTS = [
+  { id: 1, student: "Kudzai Nyamande", type: "Attendance", severity: "High",     date: "Today",    msg: "Attendance dropped to 61% — below the 70% threshold. Third consecutive week of decline." },
+  { id: 2, student: "Liam Osei",       type: "Academic",   severity: "Watch",    date: "Yesterday", msg: "Average has fallen 12 points over the last three assessments. At risk of failing Mathematics." },
+  { id: 3, student: "Tapiwa Chirwa",   type: "Fee",        severity: "Watch",    date: "2 days ago", msg: "Outstanding fee balance of $840. Second reminder sent — no response from guardian yet." },
+  { id: 4, student: "Natasha Sibanda", type: "Merit",      severity: "Positive", date: "Today",    msg: "Highest merit score in Form 1A this term. Recommended for the Excellence Award." },
+];
 
 function AIHubModule({ role }) {
+  const [atRiskCount, setAtRiskCount] = useState(0);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || role !== "admin") return;
+    supabase.from("students").select("id", { count: "exact" }).eq("risk", "High").then(({ count }) => {
+      if (count !== null) setAtRiskCount(count);
+    });
+  }, [role]);
   const personas = {
     admin: { name: "AI School Insights", greeting: "Hi, I'm your AI School Insights assistant. Ask me about enrollment trends, fee defaulters, at-risk students, or staffing — anything across Springfield International.", placeholder: "Ask about school-wide trends…" },
     teacher: { name: "AI Teacher Assistant", greeting: "Hi! I can help draft lesson plans, generate exam questions, or write marking rubrics for any of your classes. What are you working on?", placeholder: "Ask for a lesson plan, quiz, or rubric…" },
@@ -32,9 +47,9 @@ function AIHubModule({ role }) {
       {role === "admin" && (
         <>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-            <StatCard icon={AlertTriangle} label="Active Alerts" value={AI_ALERTS.length} tone="red" />
-            <StatCard icon={Users} label="At-Risk Students" value={STUDENTS.filter(s => s.risk === "High").length} tone="amber" />
-            <StatCard icon={TrendingUp} label="Projected Enrollment T3" value="368" delta="+3.4%" tone="green" />
+            <StatCard icon={AlertTriangle} label="Active Alerts"         value={AI_ALERTS.length} tone="red"   />
+            <StatCard icon={Users}         label="At-Risk Students"      value={atRiskCount}      tone="amber" />
+            <StatCard icon={TrendingUp}    label="Projected Enrollment T3" value="—"              tone="green" />
           </div>
           <Card>
             <SectionHeader title="AI Alert Feed" subtitle="Auto-generated from attendance, fee, and academic data" />
@@ -47,7 +62,7 @@ function AIHubModule({ role }) {
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <span style={{ fontWeight: 700, fontSize: 13, color: C.text }}>{a.student}</span>
-                      <Pill tone={statusTone(a.severity)}>{a.type}</Pill>
+                      <Pill tone={a.severity === "High" ? "red" : a.severity === "Positive" ? "green" : "amber"}>{a.type}</Pill>
                     </div>
                     <p style={{ fontSize: 12.5, color: C.textMuted, margin: "4px 0 0", lineHeight: 1.45 }}>{a.msg}</p>
                   </div>

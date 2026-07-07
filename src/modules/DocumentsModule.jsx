@@ -278,8 +278,10 @@ function DocumentsTeacherView({ docs, setDocs }) {
 }
 
 /* ── Student/Parent view ── */
-function DocumentsPersonalView({ role, docs }) {
-  const studentName = "Tadiwa Mhofu";
+function DocumentsPersonalView({ role, docs, currentUser }) {
+  const studentName = role === "student"
+    ? (currentUser?.full_name || "")
+    : (currentUser?.linked_student_name || "");
   const myDocs = docs.filter((d) => d.student === studentName && ["Issued","Signed"].includes(d.status));
   return (
     <Card>
@@ -306,7 +308,7 @@ function DocumentsPersonalView({ role, docs }) {
 }
 
 /* ── Root ── */
-function DocumentsModule({ role }) {
+function DocumentsModule({ role, currentUser }) {
   const [docs,    setDocs]    = useState([]);
   const [loading, setLoading] = useState(isSupabaseConfigured);
 
@@ -321,7 +323,7 @@ function DocumentsModule({ role }) {
 
   if (role === "admin")   return <DocumentsAdminView docs={docs} setDocs={setDocs} loading={loading} />;
   if (role === "teacher") return <DocumentsTeacherView docs={docs} setDocs={setDocs} />;
-  return <DocumentsPersonalView role={role} docs={docs} />;
+  return <DocumentsPersonalView role={role} docs={docs} currentUser={currentUser} />;
 }
 
 export { DocumentsModule };

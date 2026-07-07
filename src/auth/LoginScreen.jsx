@@ -81,6 +81,10 @@ function LoginScreen({ onLogin }) {
             </div>
           </div>
         )}
+        <div style={{ textAlign: "center", marginTop: 28 }}>
+          <div style={{ fontSize: 10, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.06em" }}>Developed by</div>
+          <div style={{ fontSize: 11.5, color: C.textFaint, fontWeight: 700, marginTop: 3 }}>Sir Enocks Cor Technologies</div>
+        </div>
       </div>
     </div>
   );

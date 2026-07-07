@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ClipboardList, Sparkles, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { C, monoFont } from "../lib/theme";
 import { Pill, Card, SectionHeader, Table, Modal, Tag, statusTone } from "../components/ui";
-import { CLASSES, SUBJECTS, STUDENTS } from "../data/mockData";
+import { CLASSES, SUBJECTS } from "../data/mockData";
 import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 
 const MARK_ENTRY_EXAM_ID = "EX-01";
@@ -31,6 +31,7 @@ function EmptyState({ message, hint }) {
 function ExaminationsModule({ role }) {
   const [exams,   setExams]   = useState([]);
   const [results, setResults] = useState([]);
+  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(isSupabaseConfigured);
 
   /* exam modal: null | { mode:"add" } | { mode:"edit", data:{...} } */
@@ -47,12 +48,14 @@ function ExaminationsModule({ role }) {
     Promise.all([
       supabase.from("exams").select("*").order("date"),
       supabase.from("results").select("*").eq("exam_id", MARK_ENTRY_EXAM_ID),
-    ]).then(([examsRes, resultsRes]) => {
+      supabase.from("students").select("id, name, cls, average").order("average", { ascending: false }),
+    ]).then(([examsRes, resultsRes, studentsRes]) => {
       if (examsRes.error) console.warn("Exams fetch error:", examsRes.error.message);
       setExams(examsRes.data || []);
       if (!resultsRes.error && resultsRes.data?.length > 0) {
         setResults(resultsRes.data.map((r) => ({ name: r.student, score: r.score, grade: r.grade })));
       }
+      setStudents(studentsRes.data || []);
       setLoading(false);
     });
   }, []);

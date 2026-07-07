@@ -47,7 +47,7 @@ function RoomModal({ room, boarders, onClose }) {
   );
 }
 
-function HostelModule({ role }) {
+function HostelModule({ role, currentUser }) {
   const [rooms,      setRooms]      = useState([]);
   const [boarders,   setBoarders]   = useState([]);
   const [mealPlan,   setMealPlan]   = useState([]);
@@ -191,7 +191,12 @@ function HostelModule({ role }) {
 
   /* ---- PERSONAL VIEW (student/parent) ---- */
   if (role !== "admin") {
-    const me = boarders[0];
+    const studentName = role === "student"
+      ? (currentUser?.full_name || "")
+      : (currentUser?.linked_student_name || "");
+    const me = studentName
+      ? boarders.find((b) => b.name === studentName)
+      : boarders[0];
     const todayIndex = new Date().getDay();
     const dayMap = [6, 0, 1, 2, 3, 4, 5];
     const today = mealPlan[dayMap[todayIndex]];

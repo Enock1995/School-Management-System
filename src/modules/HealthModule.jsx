@@ -471,8 +471,13 @@ function HealthTeacherView({ visits, setVisits }) {
 }
 
 /* ── Student/Parent view ── */
-function HealthPersonalView({ role, visits, profiles, vaccinations }) {
-  const me = profiles[0];
+function HealthPersonalView({ role, visits, profiles, vaccinations, currentUser }) {
+  const studentName = role === "student"
+    ? (currentUser?.full_name || "")
+    : (currentUser?.linked_student_name || "");
+  const me = studentName
+    ? profiles.find((p) => p.name === studentName)
+    : profiles[0];
   if (!me) return <Card><EmptyState icon={HeartPulse} message="No health profile on record." hint="Contact the school clinic to set up your health profile." /></Card>;
   const myVisits = visits.filter((v) => v.student === me.name);
   const myVax    = vaccinations.filter((v) => v.student === me.name);
@@ -511,7 +516,7 @@ function HealthPersonalView({ role, visits, profiles, vaccinations }) {
 }
 
 /* ── Root ── */
-function HealthModule({ role }) {
+function HealthModule({ role, currentUser }) {
   const [visits,        setVisits]        = useState([]);
   const [profiles,      setProfiles]      = useState([]);
   const [medications,   setMedications]   = useState([]);
@@ -539,7 +544,7 @@ function HealthModule({ role }) {
       {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint, marginBottom: 16 }}><Loader2 size={12} className="spin" /> Syncing…</span>}
       {role === "admin"   && <HealthAdminView visits={visits} setVisits={setVisits} profiles={profiles} setProfiles={setProfiles} medications={medications} setMedications={setMedications} vaccinations={vaccinations} setVaccinations={setVaccinations} loading={loading} />}
       {role === "teacher" && <HealthTeacherView visits={visits} setVisits={setVisits} />}
-      {(role === "student" || role === "parent") && <HealthPersonalView role={role} visits={visits} profiles={profiles} vaccinations={vaccinations} />}
+      {(role === "student" || role === "parent") && <HealthPersonalView role={role} visits={visits} profiles={profiles} vaccinations={vaccinations} currentUser={currentUser} />}
     </div>
   );
 }

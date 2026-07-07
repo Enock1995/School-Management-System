@@ -23,7 +23,7 @@ function EmptyState({ icon: Icon, message, hint }) {
   );
 }
 
-function FinanceModule({ role }) {
+function FinanceModule({ role, currentUser }) {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading]   = useState(isSupabaseConfigured);
 
@@ -109,7 +109,8 @@ function FinanceModule({ role }) {
 
   /* ---- PARENT VIEW ---- */
   if (role === "parent") {
-    const inv = invoices.find((i) => i.student === "Tadiwa Mhofu") || invoices[0];
+    const studentName = currentUser?.linked_student_name || "";
+    const inv = invoices.find((i) => i.student === studentName) || invoices[0];
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         {loading && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.textFaint }}><Loader2 size={12} className="spin" /> Loading…</span>}
